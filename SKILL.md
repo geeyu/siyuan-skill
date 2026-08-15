@@ -98,21 +98,27 @@ siyuan raw export docx --id <id> --output <file>    # 导出 Word
 
 需要录入结构化数据 (排查记录、台账、问题清单等) 且需多维统计时, 使用数据库功能。
 **这是复杂操作, 单独有完整文档**: [references/database.md](references/database.md)。
+**首选 `siyuan av` 命令组** (适配 3.8.0 B1/B2 结构变更, 自动处理嵌套值与写入验证):
+
+```bash
+siyuan av list                          # 列出全部数据库 (名称+avID)
+siyuan av keys <avID>                   # 列字段 (3.8 keys 为对象包装)
+siyuan av rows <avID> [--limit N] [-H]  # 列行数据 (走 render, TSV 可管道)
+siyuan av add <avID> --values '<JSON>' --content "标题"   # 加行, 自动反查 itemID
+siyuan av update <avID> --row <行ID> --values '<JSON>'    # 改行 (写后自动验证)
+siyuan av remove <avID> --row <行ID>    # 删行 (删后验证)
+siyuan av verify <avID>                 # 逐行打印实际值 (验证权威入口)
+siyuan av export <avID>                 # 导出全量 JSON (备份)
+```
 
 关键提醒 (避免踩坑):
 - 数据库必须先在思源 App 里创建, CLI 只能操作已存在的库
-- `database item update` 返回 `ok` **不代表写入成功** (CLI bug, 错误 value 结构静默失败), 必须 `database get` 验证
-- value 的 JSON 必须按字段类型嵌套 (如 select 用 `mSelect` 数组, date 用 Unix 毫秒时间戳)
-- `item add` 不返回 itemID, 需 get 反查 `values[].blockID`
-- **value 含双引号时用临时文件传递**, 或直接用 `scripts/av_ops.js` 工具库 (推荐)
+- **3.8.0 结构变更**: `database keys` 输出为 `{id,name,keys:[]}` 对象; 行数据不再由 `database get` 提供 (keyValues 消失), 全部走 `database render` (av 命令已适配 B1/B2)
+- `item update` 返回 `ok` **不代表写入成功** (CLI bug, 错误 value 结构静默失败) — **av add/update 写后自动 render 验证, 验证失败退出 1 并提示实际值**; 手动核实用 `siyuan av verify <avID>`
+- value 的 JSON 必须按字段类型嵌套 (select 用 `mSelect` 数组, date 用 Unix 毫秒时间戳) — **av 命令自动构造, 传简单值即可**; 含引号的值用 `--values @file` 或管道 stdin
+- `item add` 不返回 itemID — **av add 自动反查**
 
-**工具库 `scripts/av_ops.js`** (JS, 推荐): 封装所有 AV 操作, 自动处理引号陷阱和嵌套结构:
-```bash
-node scripts/av_ops.js search "排查记录"   # 查 avID
-node scripts/av_ops.js verify <avID>         # 验证所有行字段实际值
-node scripts/av_ops.js export <avID>         # 导出 JSON (备份)
-```
-便捷填值方法自动构造正确结构: `setCellSelect` (自动用 mSelect)、`setCellDate` (自动转毫秒)、`setCellText` (自动处理引号)。
+**旧工具库 `scripts/av_ops.js`**: 能力已迁移至 `siyuan av` 命令组, 保留仅供旧脚本引用 (文档不再引导使用)。
 
 **排查记录库** (已建): avID `20260709112905-e1gm9bd`, 字段设计见 database.md。
 
@@ -180,4 +186,4 @@ siyuan move <doc-id> --parent-id "$NEW_PARENT"
 - **思源没启动**: CLI 直接操作工作区文件, 不需要 App 运行; App 开着且操作了数据时, 操作后在 App 里刷新
 - **命令报错 Unknown flag**: 用 `siyuan raw-help <command>` 查最新参数
 - **SQL 查到旧数据**: 索引滞后, `sleep 2-3` 后重试, 或用 `read` 验证
-- **数据库写入不生效**: 见 [references/database.md](references/database.md), `item update` 的 ok 不可信, 用 `node scripts/av_ops.js verify <avID>` 验证; value 含双引号用临时文件或 av_ops.js
+- **数据库写入不生效**: 见 [references/database.md](references/database.md), `item update` 的 ok 不可信, 用 `siyuan av verify <avID>` 验证; 建议直接用 `siyuan av add/update` (写后自动验证), value 含引号用 `--values @file` 或 stdin

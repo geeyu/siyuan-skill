@@ -1,0 +1,58 @@
+{
+  "name": "siyuan-w2",
+  "title": "siyuan CLI shell 化重构",
+  "goal": "把 bin/siyuan 从单文件透传封装重构为 shell 风格组合命令集:像 Linux 一样用 siyuan ls/cat/head/tail/grep/find/tree/which/stat/touch/edit/mv/cp/rm/diff/sql/av 操作思源笔记,命令可组合(管道/统一输出),复杂性屏蔽在命令内部。适配 SiYuan-Kernel 3.8.0(含 COMPAT-REPORT 的 B1/B2 breaking 变更)。产出:新命令集 + 文档 + 全量验证通过。",
+  "repoPath": "/Users/geeyu/.pi/skills/siyuan",
+  "waveNote": "wave2: 编辑命令组 / AV 命令组(3.8.0) / 文档重写,并行(基于 wave1 合并产物)",
+  "concurrency": 3,
+  "steps": [
+    {
+      "id": "2",
+      "title": "编辑命令组",
+      "agent": "worker",
+      "deps": [],
+      "task": "基于 wave1 的框架(查询命令完成后 merge 的主分支),实现 shell 风格编辑命令组。\n\n【命令】(名称/参数参考 Linux,映射思源语义)\n- touch --notebook <nb> --title <t> [--parent <pid>] [--path <hpath>] —— 新建文档(默认父目录;实现 createDocWithMd 三步语义:建/移/删中间块)\n- edit <doc> [--append <text>|--prepend <text>|--update <block-id> <text>|--replace <text>] —— 统一编辑入口:追加/开头插入/改块/整篇替换(内部路由到 append/prepend/update-block/replace-doc)\n- mv <doc> --to <parent-id> [--notebook] —— 移动文档(同/跨笔记本都支持,封装层语义)\n- cp <doc> [--to <parent-id>] —— 复制文档(对应 duplicate)\n- rm <doc> —— 删除文档\n- diff <docA> <docB> —— 对比两文档 markdown 差异(内部 cat + diff,输出统一 diff 格式)\n- rename <doc> <新标题> —— 重命名(IAL title + H1 同步改,避免 title/H1 不一致坑)\n\n【硬约束】① 写入成功判断用 read 验证(不用 SQL,索引滞后);② 中文/引号内容走 stdin 或临时文件传递,不做 shell 拼接注入;③ 每次写操作返回目标 id;④ 适配 3.8.0 实测参数。\n\n完成后冒烟:在 工作 笔记本建一篇测试文档(标题含时间戳)→ append → update 块 → rename → diff(与另一篇)→ mv → rm 清理,全链路通过才 /wf done。",
+      "expectations": [
+        "编辑命令组 7 个命令全部实现,写-读-清 全链路冒烟通过",
+        "写入成功以 read 验证为准,无 SQL 滞后误判",
+        "测试文档已清理,git commit 提交"
+      ],
+      "files": [
+        "bin/"
+      ]
+    },
+    {
+      "id": "3",
+      "title": "AV 命令组(适配 3.8.0)",
+      "agent": "worker",
+      "deps": [],
+      "task": "实现 siyuan av 子命令组,适配 SiYuan-Kernel 3.8.0 的 breaking 变更(见主分支 COMPAT-REPORT-3.8.0.md 的 B1/B2)。\n\n【B1】database keys 输出从数组变为 {id,name,keys:[]} 对象 → av 命令解析按新结构;\n【B2】database get 不再返回行数据(keyValues 消失),行数据由 database render 提供(view.rows[].id=itemID,cells[].value 含 keyID/blockID)→ itemID 反查/写入验证/值读取全部改走 render。\n\n【命令】\n- av list —— 列出所有数据库(名称+avID)\n- av keys <avID> —— 列字段(适配 B1)\n- av rows <avID> [--limit N] —— 列行数据(走 render,适配 B2;含每行 id + 字段值)\n- av get <avID> --row <rowID> —— 单行详情\n- av add <avID> --values '<JSON>' —— 加行(适配 item add + render 反查 itemID)\n- av update <avID> --row <rowID> --values '<JSON>' —— 改行(改后 render 验证,item update 的 ok 不可信)\n- av remove <avID> --row <rowID> —— 删行\n- av verify <avID> —— 逐行打印实际值(替代原 verify_av.py/av_ops.js verify)\n- av export <avID> —— 导出全量 JSON(备份)\n\n【硬约束】① 值结构按字段类型嵌套(select 用 mSelect 数组/date 用毫秒时间戳),值含引号时支持从文件读(--values @file 或 stdin);② 所有写操作后必须 render/verify 验证真实生效;③ 原 scripts/av_ops.js 的同等能力迁移进新命令(av_ops.js 可保留供旧脚本引用,但文档引导用新命令)。\n\n完成后冒烟:对现有库(如 排查记录 avID 20260709112905-e1gm9bd)执行 av list/keys/rows 只读验证 + 用 av add 加一行测试数据再 av remove 清理,全通过才 /wf done。",
+      "expectations": [
+        "av 命令组 9 个命令实现,只读+写-清冒烟通过",
+        "B1/B2 适配正确(keys 新结构、行数据走 render),写入以 verify 为准",
+        "测试数据已清理,git commit 提交"
+      ],
+      "files": [
+        "bin/"
+      ]
+    },
+    {
+      "id": "4",
+      "title": "文档重写(新命令集)",
+      "agent": "worker",
+      "deps": [],
+      "task": "按新命令集重写 skill 文档(SKILL.md/README.md/references/),与实现一一对应。\n\n要求:① SKILL.md 重写:入口保持,常用命令速查改为 shell 风格(lsiyuan ls/cat/head/tail/find/grep/tree/which/stat/sql/touch/edit/mv/cp/rm/diff/rename/av/raw 表格),核心约定保留(写入验证用 read、--parent-id 语义、title/H1 关系),典型用法示例改为新命令写法,版本声明 3.8.0;② references/commands.md 重写为:命令总表(含组合示例 siyuan ls | grep)、底层透传表(raw 18-24 类命令)、退出码契约;③ references/database.md 按新 av 命令组重写(含 3.8.0 的 B1/B2 说明);④ references/conventions.md 核对保留有效约定、删过时内容;⑤ README.md 同步(安装/命令示例/结构说明);⑥ 全部文档中的命令调用示例必须与新命令实现一致(以 bin/ 实际代码为准,不许猜)。\n\n完成后自检:文档命令表 ↔ bin/ 实现逐条核对无漂移,git commit 提交。",
+      "expectations": [
+        "SKILL.md/README/references 全部按新命令集重写,无旧命令残留",
+        "文档命令示例与 bin/ 实现一一对应(自检通过)",
+        "版本声明 3.8.0 统一",
+        "git commit 提交"
+      ],
+      "files": [
+        "SKILL.md",
+        "README.md",
+        "references/"
+      ]
+    }
+  ]
+}
