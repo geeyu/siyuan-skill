@@ -25,12 +25,12 @@ sy_edit_data() {
 }
 
 # ---------------------------------------------------------------------------
-# touch --notebook <nb> --title <t> [--parent <pid>] [--path <hpath>] [--file <f>|stdin]
+# touch --notebook <nb> --title <t> [--parent <pid>] [--path <hpath>] [--data <md>|--file <f>|stdin]
 #   新建文档 (默认笔记本根目录; 内容可选, 空文档=空文件语义)
 #   返回: 新文档 id
 # ---------------------------------------------------------------------------
 cmd_touch() {
-  local nb="" title="" parent_id="" hpath="" file=""
+  local nb="" title="" parent_id="" hpath="" data="" file=""
   while [[ $# -gt 0 ]]; do
     case "$1" in
     --notebook | -n)
@@ -49,6 +49,10 @@ cmd_touch() {
       hpath="${2:?}"
       shift 2
       ;;
+    --data | -d)
+      data="${2:?}"
+      shift 2
+      ;;
     --file | -f)
       file="${2:?}"
       shift 2
@@ -57,17 +61,19 @@ cmd_touch() {
       sy_usage touch
       return 0
       ;;
-    *) sy_die 2 "touch: 未知参数 '$1'" "用法: siyuan touch --notebook <nb> --title <t> [--parent <pid> | --path <hpath>] [--file <md>|stdin]" ;;
+    *) sy_die 2 "touch: 未知参数 '$1'" "用法: siyuan touch --notebook <nb> --title <t> [--parent <pid> | --path <hpath>] [--data <md>|--file <md>|stdin]" ;;
     esac
   done
   if [[ -z "$nb" || -z "$title" ]]; then
-    sy_die 2 "touch: 缺少 --notebook 或 --title" "用法: siyuan touch --notebook <nb> --title <t> [--parent <pid> | --path <hpath>] [--file <md>|stdin]"
+    sy_die 2 "touch: 缺少 --notebook 或 --title" "用法: siyuan touch --notebook <nb> --title <t> [--parent <pid> | --path <hpath>] [--data <md>|--file <md>|stdin]"
   fi
   local nbid
   nbid="$(sy_resolve_notebook touch "$nb")" || return $?
 
   local md=""
-  if [[ -n "$file" ]]; then
+  if [[ -n "$data" ]]; then
+    md="$data"
+  elif [[ -n "$file" ]]; then
     md="$(cat "$file")"
   elif [[ ! -t 0 ]]; then
     md="$(cat)"
