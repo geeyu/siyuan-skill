@@ -1,0 +1,168 @@
+---
+name: siyuan
+description: >
+  思源笔记 (SiYuan) 命令行操作能力。当用户提到 思源、笔记、siyuan、写入笔记、
+  查笔记、搜文档、记到笔记里、整理成笔记、数据库、属性视图、排查记录库、字段、AV
+  等场景时触发。提供笔记本/文档/块/SQL/数据库(AV) 全套读写能力。基于 SiYuan-Kernel 3.7+ CLI 封装。
+---
+
+# siyuan — 思源笔记操作 skill
+
+## 何时使用
+
+用户想把内容写进思源笔记、查询思源里的笔记、或对思源做批量操作时使用。典型场景:
+- "把这个分析整理成笔记" / "记到思源里"
+- "查一下我思源里关于 X 的笔记"
+- "在 XX 笔记本下建一篇文档" / "给那篇笔记追加一段内容"
+- 录入结构化数据到数据库 (排查记录、台账等) → 见 [references/database.md](references/database.md)
+
+## 入口
+
+```bash
+~/.pi/skills/siyuan/bin/siyuan <command> [args]
+```
+
+默认输出 JSON, 写入操作返回 doc/block id。工作区 `/Users/geeyu/space/siyuan` (可被 `SIYUAN_WORKSPACE` 覆盖)。
+
+## 常用命令速查
+
+### 读取
+| 命令 | 作用 |
+|------|------|
+| `notebooks` | 列出所有笔记本 (id + 名字) |
+| `search <keyword>` | 搜文档, 输出 `doc_id<TAB>hpath<TAB>notebook` |
+| `list <notebook> [path]` | 列出笔记本下文档 (notebook 可传中文名) |
+| `read <doc-id>` | 读文档 markdown 源 (最准, 不受索引滞后影响) |
+| `get <doc-id>` | 取文档元信息 |
+| `outline <doc-id>` | 取大纲 (标题树) |
+| `backlinks <block-id> [--keyword]` | 查反链 |
+| `children <block-id>` | 列子块 (编辑前定位) |
+| `sql "<statement>" [--limit N]` | 执行 SQL |
+
+### 写入/编辑
+| 命令 | 作用 |
+|------|------|
+| `write --notebook <nb> --title <t> [--parent-id <pid>] [--file\|stdin]` | 建文档 (推荐 --parent-id), 返回 id |
+| `append <doc-id> [--data\|--file\|stdin]` | 追加到文档末尾 |
+| `insert-block --previous <bid>\|--parent <doc-id> [--data]` | 插入块 |
+| `update-block <block-id> [--data\|--file]` | 替换块内容 |
+| `replace-doc <doc-id> [--data\|--file\|stdin]` | 替换整篇文档 (删旧写新, 保留标题) |
+| `delete-block <block-id>` | 删除块 |
+| `move <doc-id> --parent-id <pid>` | 移动文档到另一父文档下 |
+| `remove <doc-id>` | 删文档 |
+
+内容传入统一支持 `--data <字符串>` / `--file <文件>` / 管道 stdin。
+
+### 底层透传 (封装层未覆盖的完整能力)
+| 命令 | 作用 |
+|------|------|
+| `raw <args...>` | 透传给 SiYuan-Kernel (自带 -w) |
+| `raw-help <subcommand...>` | 查底层命令帮助, 例 `raw-help block insert` |
+
+**完整的底层命令参考** (notebook/document/block/attr/bookmark/tag/dailynote/file/export/import/asset/history/inbox/template/repo/sync 等 18 类命令): 见 [references/commands.md](references/commands.md)。
+
+常用底层命令速查:
+```bash
+siyuan raw document rename --id <id> --title <t>   # 重命名 (只改 IAL title, 不改 H1)
+siyuan raw document duplicate --id <id>             # 复制文档
+siyuan raw block prepend --parent <id> [--data]     # 文档开头插入块
+siyuan raw block move --id <id> --parent <pid>      # 移动块
+siyuan raw block kramdown --id <id>                 # 原始 kramdown (含块属性 {: id=...})
+siyuan raw export docx --id <id> --output <file>    # 导出 Word
+```
+
+## 核心约定 (高频必读)
+
+1. **创建文档优先用 `--parent-id`**: 思源 createDocWithMd 按 hpath 创建会重复建中间块, 封装层已用「createDocWithMd + moveDocs + 删中间块」三步自动处理, 直接用即可。
+2. **判断写入成功看 `read`, 不看 SQL**: block update/delete 后 SQL 查 `content` 可能滞后 (FlushTxQueue 异步索引, 秒级), `siyuan read <doc-id>` 直接读文件是准的。没刷新 `sleep 2-3` 再查。
+3. **文档名由 IAL `title` 决定, 不是 H1**: `document rename` 只改 IAL title 不改 H1 文本, 两者会不一致。要同步改 H1 需 `update-block <h1块id> --data '# 新标题'`。
+4. **notebook 参数支持中文名**: `siyuan list 工作` 自动解析成 notebook id。
+5. **move 封装命令同/跨笔记本都适用**: 底层 `document move` 只能跨笔记本, 封装层 `move` 自动走 HTTP moveDocs。
+6. **不知道参数时**: `siyuan raw-help <command>` 查帮助, 不要猜。
+
+> 详细约定与源码依据: 见 [references/conventions.md](references/conventions.md)。
+
+## 数据库 (属性视图 / AV)
+
+需要录入结构化数据 (排查记录、台账、问题清单等) 且需多维统计时, 使用数据库功能。
+**这是复杂操作, 单独有完整文档**: [references/database.md](references/database.md)。
+
+关键提醒 (避免踩坑):
+- 数据库必须先在思源 App 里创建, CLI 只能操作已存在的库
+- `database item update` 返回 `ok` **不代表写入成功** (CLI bug, 错误 value 结构静默失败), 必须 `database get` 验证
+- value 的 JSON 必须按字段类型嵌套 (如 select 用 `mSelect` 数组, date 用 Unix 毫秒时间戳)
+- `item add` 不返回 itemID, 需 get 反查 `values[].blockID`
+- **value 含双引号时用临时文件传递**, 或直接用 `scripts/av_ops.js` 工具库 (推荐)
+
+**工具库 `scripts/av_ops.js`** (JS, 推荐): 封装所有 AV 操作, 自动处理引号陷阱和嵌套结构:
+```bash
+node scripts/av_ops.js search "排查记录"   # 查 avID
+node scripts/av_ops.js verify <avID>         # 验证所有行字段实际值
+node scripts/av_ops.js export <avID>         # 导出 JSON (备份)
+```
+便捷填值方法自动构造正确结构: `setCellSelect` (自动用 mSelect)、`setCellDate` (自动转毫秒)、`setCellText` (自动处理引号)。
+
+**排查记录库** (已建): avID `20260709112905-e1gm9bd`, 字段设计见 database.md。
+
+## 典型用法
+
+### 1. 写一篇笔记 (推荐 --parent-id)
+```bash
+# 先查目标父目录块 id (type='d' 过滤文档块)
+PARENT=$(siyuan sql "SELECT id FROM blocks WHERE content='调课' AND type='d'" \
+  | python3 -c "import sys,json;print(json.load(sys.stdin)[0]['id'])")
+cat <<'EOF' | siyuan write --notebook 工作 --title "调课逻辑梳理" --parent-id "$PARENT"
+# 调课逻辑
+
+## 入口
+...
+EOF
+# 返回新文档 id
+```
+
+### 2. 搜已有笔记 + 读内容
+```bash
+siyuan search "调课"   # 输出: doc_id<TAB>hpath<TAB>notebook
+DOC=20250612202019-t9k2h1x   # 取第一列
+siyuan read "$DOC"           # 读 markdown 源 (准)
+siyuan children "$DOC"       # 看子块结构
+```
+
+### 3. 编辑已有文档
+```bash
+DOC=<doc-id>
+siyuan append "$DOC" --data "## 新章节\n内容"
+# 改标题块 (先定位块 id)
+BID=$(siyuan sql "SELECT id FROM blocks WHERE root_id='$DOC' AND content='旧标题'" \
+  | python3 -c "import sys,json;print(json.load(sys.stdin)[0]['id'])")
+siyuan update-block "$BID" --data "## 新标题"
+# 重命名文档 (只改文档名, H1 不变; 要同步改 H1 见 conventions.md §5)
+siyuan raw document rename --id "$DOC" --title "新文档名"
+```
+
+### 4. 定位目录 + 移动文档
+```bash
+# 同名平级目录 (如 调课/调场) 需用 hpath 消歧
+NEW_PARENT=$(siyuan sql "SELECT id,hpath FROM blocks WHERE content='调场' AND type='d'" \
+  | python3 -c "import sys,json;r=json.load(sys.stdin);print(r[0]['id'])")
+siyuan move <doc-id> --parent-id "$NEW_PARENT"
+```
+
+### 5. 录入排查记录到数据库
+见 [references/database.md](references/database.md) 的「完整录入示例」。
+
+## 工作区信息
+
+- 内核: `/Applications/SiYuan.app/Contents/Resources/kernel/SiYuan-Kernel` (v3.7.0)
+- 工作区: `/Users/geeyu/space/siyuan`
+- 笔记本: 工作 / 学习 / 生活
+- 思源源码 (查行为依据): `/Users/geeyu/space/code/github/siyuan`
+
+## 故障排查
+
+- **"找不到思源内核二进制"**: 检查 SiYuan.app 是否安装, 或设 `SIYUAN_KERNEL`
+- **"工作区不存在"**: 设 `SIYUAN_WORKSPACE` 指向正确路径
+- **思源没启动**: CLI 直接操作工作区文件, 不需要 App 运行; App 开着且操作了数据时, 操作后在 App 里刷新
+- **命令报错 Unknown flag**: 用 `siyuan raw-help <command>` 查最新参数
+- **SQL 查到旧数据**: 索引滞后, `sleep 2-3` 后重试, 或用 `read` 验证
+- **数据库写入不生效**: 见 [references/database.md](references/database.md), `item update` 的 ok 不可信, 用 `node scripts/av_ops.js verify <avID>` 验证; value 含双引号用临时文件或 av_ops.js

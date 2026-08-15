@@ -1,0 +1,225 @@
+# 思源数据库 (属性视图 / Attribute View) 完整规范
+
+> 思源的「数据库」官方叫**属性视图 (Attribute View, AV)**, 是嵌在文档里的表格型结构化数据。
+> 封装层无数据库专用命令, 全部通过 `siyuan raw database ...` 透传。
+> 源码: `kernel/av/value.go` (结构体), `kernel/model/attribute_view.go` (逻辑)
+
+## 何时使用
+
+- 用户要把排查记录 / 问题清单 / 资源台账等**结构化数据**录入思源, 且需要按多个维度筛选统计时
+- 用户提到「数据库」「属性视图」「排查记录库」「字段」「表格」「AV」等
+
+## 前提与定位
+
+1. **数据库必须先在思源 App 里创建** (插入块 → 数据库视图)。CLI 只能操作已存在的数据库, 不能凭空建 AV 块。
+2. **拿到 avID**: 数据库是嵌在文档里的块, avID 是该块的 ID (≠ 文档 ID)。定位:
+   ```bash
+   # 按名称搜 (推荐, 直接返回 avID)
+   siyuan raw database search "排查记录" -f json
+   # 或用 SQL
+   siyuan sql "SELECT id, content FROM blocks WHERE type='d' AND content LIKE '%库%'"
+   ```
+   `database search` 返回里 `avID` 字段就是要用的 ID。
+
+## 命令清单
+
+| 命令 | 作用 |
+|------|------|
+| `raw database search "<关键词>"` | 按名称搜索数据库, 拿 avID |
+| `raw database get --av <avID>` | 获取数据库完整内容 (结构+数据), **验证写入用这个** |
+| `raw database keys --av <avID>` | 列出所有字段 (列) 及 keyID |
+| `raw database render --av <avID> [-p 页码 -s 每页]` | 渲染分页数据 |
+| `raw database item add --av <avID> --block <blockID> --content "标题"` | 新增一行 (绑定文档块) |
+| `raw database item add --av <avID> --detached --content "标题"` | 新增游离行 (不绑文档块) |
+| `raw database item update --av <avID> --key <keyID> --item <itemID> --value '<json>'` | 更新某个单元格 |
+| `raw database item remove --av <avID> --ids <id1,id2>` | 删除行 |
+| `raw database key add --av <avID> --name <名> --type <类型>` | 新增字段 (列) |
+| `raw database key remove --av <avID> --key <keyID>` | 删除字段 |
+| `raw database unused` / `clean` | 列出 / 清理未使用的数据库 |
+
+所有 `raw` 命令建议加 `-f json` 拿结构化输出便于解析。
+
+## 字段类型 (--type)
+
+`block / text / number / date / select / mSelect / url / email / phone / mAsset / template / created / updated / checkbox / relation / rollup / lineNumber`
+
+`block` 是首列 (绑定文档块的标题列), 建库时自带, 通常不动。
+
+## ⚠️ 值结构对照表 (最关键的坑)
+
+`database item update` 返回 `ok` **不代表值真写进去了**, 必须用 `database get` 验证。各字段类型 value 的 JSON 结构**必须按字段类型嵌套** (源码 `kernel/av/value.go` 的 ValueXxx 结构体决定):
+
+| 类型 | 正确 `--value` JSON | 错误写法 (CLI 会返回 ok 但不落库) |
+|------|---------------------|------|
+| text | `{"type":"text","text":{"content":"..."}}` | `{"type":"text","text":"..."}` (text 非 string) |
+| url | `{"type":"url","url":{"content":"..."}}` | `{"type":"url","content":"..."}` (顶层 content 不生效) |
+| email | `{"type":"email","email":{"content":"..."}}` | 同 url, 顶层 content 不生效 |
+| phone | `{"type":"phone","phone":{"content":"..."}}` | 同上 |
+| date | `{"type":"date","date":{"content":<Unix毫秒int>,"isNotEmpty":true}}` | `{"type":"date","content":"2026-07-08"}` (content 必须是时间戳) |
+| select | `{"type":"select","mSelect":[{"content":"..."}]}` | `{"type":"select","content":"..."}` (**单选内部用 mSelect 数组!**) |
+| mSelect | `{"type":"mSelect","mSelect":[{"content":"A"},{"content":"B"}]}` | `{"type":"mSelect","contents":["A"]}` |
+| checkbox | `{"type":"checkbox","checkbox":{"checked":true}}` | `{"type":"checkbox","checked":true}` (顶层 checked 不生效) |
+| template | `{"type":"template","template":{"content":"..."}}` | `{"type":"template","content":"..."}` |
+| number | `{"type":"number","number":{"content":123,"isNotEmpty":true}}` | `{"type":"number","content":123}` (顶层 content 不生效) |
+| relation | `{"type":"relation","relation":{"blockIDs":["<目标行blockID>"]}}` | relation.contents 是自动渲染的, 不需传 |
+| mAsset | `{"type":"mAsset","mAsset":[{"type":"file","name":"名","content":"<url>"}]}` | type 为 file 或 image |
+
+日期时间戳生成: `python3 -c "import calendar;print(int(calendar.timegm((2026,7,8,0,0,0,0,0,0)))*1000)"`
+
+### 为什么会静默返回 ok (根因)
+
+源码 `kernel/model/attribute_view.go` 的 `updateAttributeViewValue`: CLI 传来的 `--value` JSON 会被反序列化到 `*av.Value` 结构体。`av.Value` 的字段是嵌套对象 (`Text/URL/Date/MSelect/Checkbox/...`, json tag 为 `text/url/date/mSelect/checkbox/...`)。**如果 JSON 用了顶层 `content`/`checked` 等字段**, 因为 `Value` 结构体没有这些顶层字段, 反序列化时这些值被丢弃 → 对应子对象为 nil → 后续处理跳过 → **函数静默 return, CLI 照常打印 ok 但什么都不存**。这是 CLI bug, 未报错, 极易误判成功。
+
+### select 选项的自动创建行为
+
+源码逻辑: 写 select/mSelect 时, 若传入的选项 `content` 在该字段的 options 里不存在, **会自动新建选项并随机配色** (`color = 1~14 随机`), 不会报错。所以第一次写新选项值不需要预先建选项。但随机配色可能不符合预期, 重要选项建议先在思源 App 里手动建好并选好颜色。
+
+### `--value` 里的 type 字段
+
+`type` 字段会被反序列化并覆盖 val.Type, 但**实际写入类型以 keyID 对应的字段类型为准** (源码 `val.Type = keyValues.Key.Type` 在反序列化前已设置)。所以 type 写错不会改变字段类型, 但建议与字段实际类型保持一致避免混淆。
+
+## itemID 与 blockID 的区别
+
+- **blockID**: 绑定的文档块 ID (item add 时用 `--block` 传入的值), 是「首列主键」指向的文档。
+- **itemID**: 数据库行的 ID, **每次 item add 时新生成** (`ast.NewNodeID()`), **不等于 blockID** (源码 AddAttributeViewBlock 第 3685 行)。detached 行同理也是新生成。
+- **item add 不返回 itemID**: CLI 和 MCP 都只返回 `ok`/`item added`, 必须 `database get` 反查。反查方法: block 类型字段的 `values[].blockID` 即 itemID; 而 `values[].block.id` 是绑定的文档块 ID。
+
+## 录入一条记录的标准流程
+
+1. **先写好排查文档** (用 `write` 命令, 拿到 doc-id)
+2. **查字段结构** 拿 keyID: `siyuan raw database keys --av <avID> -f json`
+3. **加一行** 绑定文档: `siyuan raw database item add --av <avID> --block <doc-id> --content "标题" -f json`
+   - 返回 ok 但不返回 itemID, 用 `database get` 反查: block 字段的 `values[].blockID` 即行 ID
+4. **逐字段填值** 用上表正确结构: `siyuan raw database item update --av <avID> --key <keyID> --item <itemID> --value '<json>'`
+5. **验证**: `siyuan raw database get --av <avID> -f json | python3 ../scripts/verify_av.py` (ok 不代表成功)
+
+## ⚠️ value 含双引号时的传参陷阱 (关键经验)
+
+`--value '<json>'` 用单引号包裹时, JSON 内的双引号 + shell 引号嵌套极易出错, 导致 value 解析失败**静默不落库** (CLI 仍返回 ok)。这是本次重建排查记录库踩到的核心坑。
+
+**根因**: shell 对 `'..."..."...'` 的引号处理与 JSON 内部双引号冲突, 传入内核的 value 字符串被截断或破坏, 反序列化到 av.Value 时子对象为 nil, 静默跳过。
+
+**可靠做法 1 — 临时文件传递** (shell 脚本里):
+```bash
+VAL='{"type":"text","text":{"content":"含\"引号\"的内容"}}'
+echo -n "$VAL" > /tmp/av_val.txt
+siyuan raw database item update --av "$AV" --key <keyID> --item "$ITEM" \
+  --value "$(cat /tmp/av_val.txt)"
+```
+
+**可靠做法 2 — 用 av_ops.js 工具库** (推荐, JS 里无 shell 引号问题):
+```javascript
+const av = require('./scripts/av_ops.js');
+av.setCellText(avID, keyID, itemID, '含"引号"的内容');  // 自动处理
+```
+
+## 工具库 scripts/av_ops.js (推荐使用)
+
+封装了所有 AV 操作, 自动处理引号陷阱和嵌套结构。CLI 和 require 两种用法:
+
+```bash
+# CLI 用法
+node scripts/av_ops.js search "排查记录"        # 按名查 avID
+node scripts/av_ops.js keys <avID>               # 列字段
+node scripts/av_ops.js verify <avID>              # 打印所有行字段实际值 (验证写入)
+node scripts/av_ops.js export <avID>              # 导出为 JSON (备份/迁移用)
+```
+
+```javascript
+// require 用法 (批量操作推荐)
+const av = require('./scripts/av_ops.js');
+const AV = av.search('排查记录');
+
+// 加行 + 填值 (一行代码搞定, 自动构造正确结构)
+const itemId = av.addRow(AV, docId, '排查：XXX');
+av.setCellSelect(AV, av.keyId(AV,'业务模块'), itemId, '调课调讲');  // select 自动用 mSelect
+av.setCellDate(AV, av.keyId(AV,'报告日期'), itemId, '2026-07-08'); // 自动转毫秒时间戳
+av.setCellText(AV, av.keyId(AV,'排查结论'), itemId, '含"引号"的结论'); // 自动处理引号
+av.setCellCheckbox(AV, av.keyId(AV,'是否已修复'), itemId, true);
+
+// 或批量填值
+av.fillRow(AV, itemId, {
+  '业务模块': '调课调讲',           // string 自动判 text
+  '问题状态': '已解决',
+  '排查结论': '结论内容',
+  '是否已修复': true,               // boolean 自动判 checkbox
+});
+
+// 验证
+av.verify(AV);
+```
+
+便捷方法对照表 (自动构造正确嵌套结构, 无需记 JSON):
+
+| 方法 | 对应字段类型 | 说明 |
+|------|------------|------|
+| `setCellText(avID,k,it,val)` | text | `{text:{content:val}}` |
+| `setCellUrl(avID,k,it,val)` | url/email/phone | `{url:{content:val}}` |
+| `setCellSelect(avID,k,it,opt)` | select | **自动用 mSelect 数组** (思源坑点) |
+| `setCellMSelect(avID,k,it,opts[])` | mSelect | 多选 |
+| `setCellDate(avID,k,it,'2026-07-08')` | date | **自动转 Unix 毫秒** |
+| `setCellCheckbox(avID,k,it,bool)` | checkbox | `{checkbox:{checked:bool}}` |
+| `fillRow(avID,it,{字段:值})` | 混合 | 自动判类型, 批量填 |
+
+## 排查记录库字段设计 (当前规范)
+
+库 avID: `20260709112905-e1gm9bd`, 位于 `/工作/供应链/问题排查记录/排查记录库`。
+
+| 字段 | 类型 | 规范选项 / 说明 |
+|------|------|----------------|
+| 主键 | block | 绑定排查文档 |
+| 报告日期 | date | 问题报告时间 (Unix 毫秒) |
+| 业务模块 | select | 调课调讲/退课/进班分配/场次/班级管理/课程资料/接口/性能/运维/其他 |
+| 问题类型 | select | 数据异常/状态不一致/接口报错/数据缺失/绑定未生效/数据校验/性能问题/配置错误/其他 |
+| 严重程度 | select | P0阻断/P1功能/P2体验/P3建议 |
+| 根因类型 | select | 系统bug/业务操作遗漏/数据问题/配置问题/环境问题/待定/非问题 |
+| 问题状态 | select | 待排查/排查中/已解决/已关闭/已忽略 |
+| 影响范围 | select | 单用户/多用户/全量/无影响 |
+| 涉及接口 | url | 相关接口地址 |
+| 涉及数据 | text | 工单号、表名等 (合并字段, 用 `\|` 分隔) |
+| 排查结论 | text | 最终结论 (用 text 不用 template, template 是公式字段) |
+| 责任人 | text | 排查/修复负责人 |
+| 标签 | mSelect | 跨维度标签, 如「快速」「耗时」「需复盘」 |
+
+设计要点:
+- 「是否系统bug」归入根因类型 (系统bug), 不单独设字段
+- 「是否已修复」归入问题状态 (已解决/已关闭), 统一状态流转
+- select 选项首次写入会自动创建并随机配色, 重要选项建议先在 App 里手动建好配色
+- 排查结论用 text 而非 template (template 是公式字段, 不能存自由文本)
+
+## 完整录入示例 (排查记录库)
+
+```bash
+AV=20260709112905-e1gm9bd  # 排查记录库
+# 或动态查: AV=$(node scripts/av_ops.js search "排查记录")
+
+# 1. 查字段结构 (拿 keyID)
+node scripts/av_ops.js keys "$AV"
+
+# 2. 先写排查文档 (拿到 DOC_ID), 建议挂到对应业务子目录
+DOC=$(cat report.md | siyuan write --notebook 工作 --title "排查：XXX" --parent-id "<业务子目录id>")
+
+# 3. 加一行绑定文档 (自动反查 itemID)
+node -e "
+const av = require('./scripts/av_ops.js');
+const AV = '$AV';
+const itemId = av.addRow(AV, '$DOC', '排查：XXX');
+console.log(itemId);
+" > /tmp/itemid.txt
+ITEM=$(cat /tmp/itemid.txt)
+
+# 4. 批量填值 (用 av_ops.js, 自动处理引号和结构)
+node -e "
+const av = require('./scripts/av_ops.js');
+const AV = '$AV', ITEM = '$ITEM';
+av.setCellDate(AV, av.keyId(AV,'报告日期'), ITEM, '2026-07-08');
+av.setCellSelect(AV, av.keyId(AV,'业务模块'), ITEM, '调课调讲');
+av.setCellSelect(AV, av.keyId(AV,'问题类型'), ITEM, '状态不一致');
+av.setCellSelect(AV, av.keyId(AV,'问题状态'), ITEM, '已解决');
+av.setCellText(AV, av.keyId(AV,'排查结论'), ITEM, '结论内容, 可含\"引号\"');
+console.log('done');
+"
+
+# 5. ⚠️ 验证 (ok 不代表成功, 必须查实际值)
+node scripts/av_ops.js verify "$AV" | head -30
+```
