@@ -28,6 +28,22 @@
 //   http-create <host> <port> <nbid> <path>
 //                             stdin=markdown → POST createDocWithMd → 新文档 id
 //   http-data                  http 响应 JSON → data 字段 (code!=0 时报错 exit 1)
+//   idx <i>                    JSON 数组 → 第 i 项 (原始 JSON)
+//   field <name>               JSON 对象 → 字段字符串值 (null/缺失输出空)
+//   field-json <name>          JSON 对象 → 字段原始 JSON
+//
+// AV (属性视图, SiYuan-Kernel 3.8.0):
+//   av-search-text             database search JSON → "avID\tavName\thPath" 行 (去重)
+//   av-keys-text               database keys JSON (3.7 数组 / 3.8 对象包装兼容) → "name\ttype\tkeyID" 行
+//   av-format                  value 对象 → 展示字符串 (统一格式, 输出/验证共用)
+//   av-rowcount                render JSON → view.rowCount
+//   av-merge                   [render,...] JSON 数组 → 合并后的 render 对象 (翻页拼接)
+//   av-build                   env SY_AV_KEYS=keys JSON, stdin=用户 values JSON
+//                              → [{keyID,name,type,value,expect}] (按字段类型自动嵌套)
+//   av-render <mode> [args]    stdin=render JSON; mode: rows [limit] [header] | rows-json [limit]
+//                              | row <itemID> | row-json <itemID> | verify | verify-json
+//                              | export | find-item <title> | row-at <i> | has-row <itemID>
+//                              | check-cell <itemID> <keyID> <expect>
 'use strict';
 const fs = require('fs');
 
@@ -303,7 +319,358 @@ switch (cmd) {
     }
     break;
   }
+  case 'idx': { // JSON 数组 → 第 i 项 (原始 JSON)
+    const i = parseInt(args[0], 10);
+    const d = parse();
+    if (d[i] !== undefined) console.log(JSON.stringify(d[i]));
+    break;
+  }
+  case 'field': { // JSON 对象 → 字段字符串值
+    const d = parse();
+    const v = d[args[0]];
+    console.log(v === undefined || v === null ? '' : String(v));
+    break;
+  }
+  case 'field-json': { // JSON 对象 → 字段原始 JSON
+    const d = parse();
+    if (d[args[0]] !== undefined) console.log(JSON.stringify(d[args[0]]));
+    break;
+  }
+  // ===== AV (属性视图) 3.8.0 支持 =====
+  case 'av-search-text': {
+    const seen = new Set();
+    for (const d of parse()) {
+      if (seen.has(d.avID)) continue;
+      seen.add(d.avID);
+      console.log([d.avID, d.avName, d.hPath || ''].join('\t'));
+    }
+    break;
+  }
+  case 'av-keys-text': {
+    const d = parse();
+    const keys = Array.isArray(d) ? d : (d.keys || []); // B1: 3.8 为 {id,name,keys:[]}
+    for (const k of keys) console.log([k.name, k.type, k.id].join('\t'));
+    break;
+  }
+  case 'av-format':
+    console.log(avFormatValue(parse()));
+    break;
+  case 'av-rowcount':
+    console.log((parse().view || {}).rowCount || 0);
+    break;
+  case 'av-merge': {
+    const pages = parse();
+    const first = pages[0];
+    if (!first) break;
+    const rows = [];
+    for (const p of pages) rows.push(...(((p.view) || {}).rows || []));
+    console.log(JSON.stringify({
+      id: first.id,
+      name: first.name,
+      viewID: first.viewID,
+      viewType: first.viewType,
+      page: 1,
+      pageSize: rows.length,
+      view: Object.assign({}, first.view || {}, { rows, rowCount: (first.view || {}).rowCount || rows.length }),
+    }));
+    break;
+  }
+  case 'av-build': {
+    // env SY_AV_KEYS=keys JSON; stdin=用户 values {字段名或keyID: 简单值|完整value对象}
+    let keysRaw;
+    try {
+      keysRaw = JSON.parse(process.env.SY_AV_KEYS || '[]');
+    } catch (e) {
+      console.error('av-build: SY_AV_KEYS 不是合法 JSON');
+      process.exit(1);
+    }
+    const keys = Array.isArray(keysRaw) ? keysRaw : (keysRaw.keys || []);
+    const values = parse();
+    if (!values || typeof values !== 'object' || Array.isArray(values)) {
+      console.error('av-build: --values 必须是 JSON 对象 {字段名: 值}');
+      process.exit(1);
+    }
+    const byId = new Map(keys.map((k) => [k.id, k]));
+    const out = [];
+    for (const [ref, v] of Object.entries(values)) {
+      const k = byId.get(ref) || keys.find((x) => x.name === ref);
+      if (!k) {
+        console.error('av-build: 找不到字段 "' + ref + '", 可用: ' + keys.map((x) => x.name).join(', '));
+        process.exit(1);
+      }
+      if (k.type === 'block') {
+        console.error('av-build: 忽略 block 字段 "' + k.name + '" (由 --content/--block 设置)');
+        continue;
+      }
+      const built = avBuildValue(k, v);
+      if (!built) {
+        console.error('av-build: 字段 "' + k.name + '" 类型 ' + k.type + ' 不支持写入 (只读/特殊字段)');
+        process.exit(1);
+      }
+      out.push({ keyID: k.id, name: k.name, type: k.type, value: built.value, expect: built.expect });
+    }
+    console.log(JSON.stringify(out));
+    break;
+  }
+  case 'av-render':
+    avRenderMode(parse(), args[0] || '', args.slice(1));
+    break;
   default:
     console.error('fmt.js: unknown subcommand: ' + cmd);
     process.exit(2);
+}
+
+// ===== AV (属性视图) 辅助 =====
+
+// value 对象 → 展示字符串 (输出/验证共用的唯一格式)
+function avFormatValue(v) {
+  if (!v || typeof v !== 'object') return String(v ?? '');
+  const t = v.type || v.valueType || '';
+  if (t === 'block') return String((v.block || {}).content ?? '');
+  if (t === 'text') return String((v.text || {}).content ?? '');
+  if (t === 'url' || t === 'email' || t === 'phone') return String((v[t] || {}).content ?? '');
+  if (t === 'date') {
+    const d = v.date || {};
+    const f = d.formattedContent;
+    return f !== undefined && f !== null && f !== '' ? String(f) : String(d.content ?? '');
+  }
+  if (t === 'select' || t === 'mSelect') return (v.mSelect || []).map((c) => String(c.content ?? '')).join(',');
+  if (t === 'checkbox') return (v.checkbox || {}).checked ? '✓' : '✗';
+  if (t === 'template') return String((v.template || {}).content ?? '');
+  if (t === 'number') {
+    const n = v.number || {};
+    return String(n.content ?? (n.formattedContent ?? ''));
+  }
+  if (t === 'relation') return ((v.relation || {}).blockIDs || []).join(',');
+  if (t === 'mAsset') return (v.mAsset || []).map((a) => a.name || a.content || '').join(',');
+  return JSON.stringify(v).slice(0, 200);
+}
+
+// 用户简单值 → 按字段类型嵌套的 value 对象 (+ 期望展示值 expect, 用于写入后验证)
+// 返回 {value, expect} 或 null (类型不可写)
+function avBuildValue(k, v) {
+  const t = k.type;
+  // 完整 value 对象直接透传 (带 type 字段, 调用方自行保证嵌套正确)
+  if (v && typeof v === 'object' && !Array.isArray(v) && v.type) {
+    return { value: v, expect: avFormatValue(v) };
+  }
+  const list = () => (Array.isArray(v) ? v.map(String) : String(v).split(',').map((s) => s.trim()).filter(Boolean));
+  switch (t) {
+    case 'text':
+      return { value: { type: 'text', text: { content: String(v) } }, expect: String(v) };
+    case 'url':
+      return { value: { type: 'url', url: { content: String(v) } }, expect: String(v) };
+    case 'email':
+      return { value: { type: 'email', email: { content: String(v) } }, expect: String(v) };
+    case 'phone':
+      return { value: { type: 'phone', phone: { content: String(v) } }, expect: String(v) };
+    case 'template':
+      return { value: { type: 'template', template: { content: String(v) } }, expect: String(v) };
+    case 'date': {
+      let ms;
+      if (typeof v === 'number') ms = v;
+      else if (typeof v === 'string' && /^\d+$/.test(v.trim())) ms = parseInt(v.trim(), 10);
+      else {
+        const s = String(v).trim();
+        ms = Date.parse(/^\d{4}-\d{2}-\d{2}$/.test(s) ? s + 'T00:00:00Z' : s);
+        if (Number.isNaN(ms)) {
+          console.error('av-build: 字段 "' + k.name + '" 日期无法解析: ' + v);
+          process.exit(1);
+        }
+      }
+      return { value: { type: 'date', date: { content: ms, isNotEmpty: true } }, expect: String(ms) };
+    }
+    case 'select': {
+      const one = Array.isArray(v) ? String(v[0]) : String(v);
+      if (!one.trim()) {
+        console.error('av-build: 字段 "' + k.name + '" select 值不能为空');
+        process.exit(1);
+      }
+      return { value: { type: 'select', mSelect: [{ content: one }] }, expect: one };
+    }
+    case 'mSelect': {
+      const opts = list();
+      return { value: { type: 'mSelect', mSelect: opts.map((c) => ({ content: c })) }, expect: opts.join(',') };
+    }
+    case 'checkbox': {
+      const b = typeof v === 'boolean' ? v : (v === 'true' || v === '1' || v === '✓');
+      return { value: { type: 'checkbox', checkbox: { checked: b } }, expect: b ? '✓' : '✗' };
+    }
+    case 'number': {
+      const n = Number(v);
+      if (Number.isNaN(n)) {
+        console.error('av-build: 字段 "' + k.name + '" 数字无法解析: ' + v);
+        process.exit(1);
+      }
+      return { value: { type: 'number', number: { content: n, isNotEmpty: true } }, expect: String(n) };
+    }
+    case 'relation': {
+      const ids = list();
+      return { value: { type: 'relation', relation: { blockIDs: ids } }, expect: ids.join(',') };
+    }
+    case 'mAsset': {
+      const names = list();
+      const items = names.map((s) => ({ type: 'file', name: s, content: '' }));
+      return { value: { type: 'mAsset', mAsset: items }, expect: items.map((a) => a.name).join(',') };
+    }
+    default:
+      return null; // rollup/created/updated/lineNumber/block 等只读/特殊字段
+  }
+}
+
+// render JSON → 各类行数据输出 (B2: 行数据唯一来源)
+function avRenderMode(d, mode, args) {
+  const v = d.view || {};
+  const columns = v.columns || [];
+  const rows = v.rows || [];
+  const visCols = columns.filter((c) => !c.hidden);
+  const rowOf = (r) => {
+    const cells = {};
+    let title = '';
+    for (const c of r.cells || []) {
+      const val = c.value || {};
+      cells[val.keyID] = val;
+      if ((val.type || '') === 'block') title = String((val.block || {}).content ?? '');
+    }
+    const fields = {};
+    for (const col of visCols) {
+      if (col.type === 'block') continue;
+      fields[col.name] = avFormatValue(cells[col.id]);
+    }
+    return { itemID: r.id, title, fields };
+  };
+  const docIDOf = (r) => {
+    for (const c of r.cells || []) {
+      const val = c.value || {};
+      if ((val.type || '') === 'block') return String((val.block || {}).id ?? '');
+    }
+    return '';
+  };
+  const lineOf = (o) => {
+    const line = [o.itemID, o.title];
+    for (const col of visCols) if (col.type !== 'block') line.push(o.fields[col.name] ?? '');
+    return line.join('\t');
+  };
+  const headerOf = () => {
+    const line = ['itemID', '标题'];
+    for (const col of visCols) if (col.type !== 'block') line.push(col.name);
+    return line.join('\t');
+  };
+  const printRow = (r) => {
+    const o = rowOf(r);
+    console.log('■ ' + (o.title || '(无标题)') + ' (' + o.itemID + ')');
+    for (const col of visCols) {
+      if (col.type === 'block') continue;
+      console.log('  ' + col.name.padEnd(10) + ' (' + col.type.padEnd(7) + ') | ' + (o.fields[col.name] ?? ''));
+    }
+  };
+  switch (mode) {
+    case 'rows': {
+      const limit = args[0] ? parseInt(args[0], 10) : 0;
+      const header = args[1] === '1';
+      const list = limit > 0 ? rows.slice(0, limit) : rows;
+      if (header) console.log(headerOf());
+      for (const r of list) console.log(lineOf(rowOf(r)));
+      break;
+    }
+    case 'rows-json': {
+      const limit = args[0] ? parseInt(args[0], 10) : 0;
+      const list = limit > 0 ? rows.slice(0, limit) : rows;
+      console.log(JSON.stringify(list.map((r) => rowOf(r))));
+      break;
+    }
+    case 'row': {
+      const r = rows.find((x) => x.id === args[0]);
+      if (!r) {
+        console.error('av: 找不到行 ' + args[0]);
+        process.exit(1);
+      }
+      printRow(r);
+      break;
+    }
+    case 'row-json': {
+      const r = rows.find((x) => x.id === args[0]);
+      if (!r) {
+        console.error('av: 找不到行 ' + args[0]);
+        process.exit(1);
+      }
+      console.log(JSON.stringify(rowOf(r)));
+      break;
+    }
+    case 'verify':
+      for (const r of rows) printRow(r);
+      break;
+    case 'verify-json':
+      console.log(JSON.stringify(rows.map((r) => rowOf(r))));
+      break;
+    case 'export': {
+      const out = rows.map((r) => Object.assign({ docID: docIDOf(r) }, rowOf(r)));
+      console.log(JSON.stringify(out, null, 2));
+      break;
+    }
+    case 'find-item': {
+      const title = args[0] ?? '';
+      let found = '';
+      for (const r of rows) {
+        for (const c of r.cells || []) {
+          const val = c.value || {};
+          if ((val.type || '') === 'block' && String((val.block || {}).content ?? '') === title) found = r.id;
+        }
+      }
+      if (found) console.log(found);
+      break;
+    }
+    case 'find-item-by-doc': {
+      // 绑定文档块的行: block cell 的 block.id == docID (绑定后标题被文档标题覆盖, 不能按标题匹配)
+      const docID = args[0] ?? '';
+      let found = '';
+      for (const r of rows) {
+        for (const c of r.cells || []) {
+          const val = c.value || {};
+          if ((val.type || '') === 'block' && String((val.block || {}).id ?? '') === docID) found = r.id;
+        }
+      }
+      if (found) console.log(found);
+      break;
+    }
+    case 'row-at': {
+      const i = parseInt(args[0], 10);
+      const r = rows[i];
+      if (r) console.log(r.id);
+      break;
+    }
+    case 'has-row':
+      console.log(rows.some((x) => x.id === args[0]) ? 'ok' : 'none');
+      break;
+    case 'check-cell': {
+      const [itemID, keyID, expect] = args;
+      const r = rows.find((x) => x.id === itemID);
+      if (!r) {
+        console.log('FAIL\t行不存在');
+        break;
+      }
+      const cell = (r.cells || []).find((c) => (c.value || {}).keyID === keyID);
+      if (!cell || !cell.value) {
+        console.log('FAIL\t单元格为空');
+        break;
+      }
+      const val = cell.value;
+      let actual;
+      let ok;
+      if (val.type === 'date') {
+        // date 用毫秒 content 比较 (formattedContent 受时区影响)
+        const got = (val.date || {}).content;
+        actual = got === undefined ? '' : String(got);
+        ok = actual === expect;
+      } else {
+        actual = avFormatValue(val);
+        ok = actual === expect;
+      }
+      console.log((ok ? 'ok' : 'FAIL') + '\t' + actual);
+      break;
+    }
+    default:
+      console.error('fmt.js av-render: 未知模式 ' + mode);
+      process.exit(2);
+  }
 }

@@ -111,6 +111,7 @@ sy_kernel() {
   # stdout 直通, 内核 stderr 直接穿透 (错误信息即时可见)
   "$SY_NODE" - "$SIYUAN_TIMEOUT" "$SIYUAN_KERNEL" "${args[@]}" <<'JS' || return $?
 const { spawnSync } = require('child_process');
+const fs = require('fs');
 const timeout = parseFloat(process.argv[2]);
 const kernel = process.argv[3];
 const args = process.argv.slice(4);
@@ -118,18 +119,19 @@ const r = spawnSync(kernel, args, {
   timeout: timeout > 0 ? timeout * 1000 : undefined,
   maxBuffer: 1024 * 1024 * 64,
 });
+// 同步写 fd 1/2: 异步 write 在输出 >管道缓冲(约 64KB)时会因进程提前退出而截断
 if (r.error) {
   if (r.error.code === 'ETIMEDOUT') {
-    process.stderr.write('siyuan: kernel timed out after ' + timeout + ' seconds\n');
+    fs.writeSync(2, 'siyuan: kernel timed out after ' + timeout + ' seconds\n');
     process.exit(124);
   }
-  process.stderr.write('siyuan: kernel spawn error: ' + r.error.message + '\n');
+  fs.writeSync(2, 'siyuan: kernel spawn error: ' + r.error.message + '\n');
   process.exit(3);
 }
-if (r.stderr) process.stderr.write(r.stderr);
-process.stdout.write(r.stdout || '');
+if (r.stderr) fs.writeSync(2, r.stderr);
+fs.writeSync(1, r.stdout || '');
 if (r.signal) {
-  process.stderr.write('siyuan: kernel timed out after ' + timeout + ' seconds\n');
+  fs.writeSync(2, 'siyuan: kernel timed out after ' + timeout + ' seconds\n');
   process.exit(124);
 }
 process.exit(r.status === null ? 1 : r.status);
