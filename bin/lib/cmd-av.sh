@@ -18,54 +18,57 @@ av_usage() { # [子命令]
   case "${1:-}" in
   list)
     cat <<'EOF'
-用法: siyuan av list [--json]
-  列出全部数据库 (名称+avID+所在路径)
+用法: siyuan av list [--json|--markdown]
+    列出全部数据库 (名称+avID+所在路径); --markdown 表格
 EOF
     ;;
   keys)
     cat <<'EOF'
-用法: siyuan av keys <avID|库名> [--json]
-  列字段 (name, type, keyID; 3.8.0 keys 为 {id,name,keys:[]} 对象, 已适配 B1)
+用法: siyuan av keys <avID|库名> [--json|--markdown]
+    列字段 (name, type, keyID; 3.8.0 keys 为 {id,name,keys:[]} 对象, 已适配 B1)
+    --markdown 表格
 EOF
     ;;
   rows)
     cat <<'EOF'
-用法: siyuan av rows <avID|库名> [--limit N] [-H] [--json]
-  列行数据 (走 database render, 适配 B2); 文本=TSV 可管道: itemID<TAB>标题<TAB>字段值...
-  -H 输出表头; --json 输出 [{itemID,title,fields:{字段名:值}}]
+用法: siyuan av rows <avID|库名> [--limit N] [-H] [--json|--markdown]
+    列行数据 (走 database render, 适配 B2); 文本=TSV 可管道: itemID<TAB>标题<TAB>字段值...
+    -H 输出表头; --json 输出 [{itemID,title,fields:{字段名:值}}]; --markdown 表格
 EOF
     ;;
   get)
     cat <<'EOF'
-用法: siyuan av get <avID|库名> --row <rowID> [--json]
-  单行详情 (标题 + 每字段实际值)
+用法: siyuan av get <avID|库名> --row <rowID> [--json|--markdown]
+    单行详情 (标题 + 每字段实际值); --markdown 键值表
 EOF
     ;;
   add)
     cat <<'EOF'
-用法: siyuan av add <avID|库名> --values '<JSON>' [--content <标题>] [--block <doc-id>]
-  加一行 (默认游离行; --block 绑定文档块)。--values 为 {字段名: 值} JSON,
-  值按字段类型自动嵌套 (select 用 mSelect / date 自动转毫秒 / checkbox 布尔)。
-  含引号的值用 --values @file 或管道 stdin 传入。输出新行 itemID。
+用法: siyuan av add <avID|库名> --values '<JSON>' [--content <标题>] [--block <doc-id>] [--json|--markdown]
+    加一行 (默认游离行; --block 绑定文档块)。--values 为 {字段名: 值} JSON,
+    值按字段类型自动嵌套 (select 用 mSelect / date 自动转毫秒 / checkbox 布尔)。
+    含引号的值用 --values @file 或管道 stdin 传入。输出新行 itemID (文本) /
+    JSON {id,action} / markdown 确认块。
 EOF
     ;;
   update)
     cat <<'EOF'
-用法: siyuan av update <avID|库名> --row <rowID> --values '<JSON>'
-  改行字段 (同 add 的值规则)。item update 的 ok 不可信, 写后 render 验证,
-  验证失败退出 1 并提示实际值。
+用法: siyuan av update <avID|库名> --row <rowID> --values '<JSON>' [--json|--markdown]
+    改行字段 (同 add 的值规则)。item update 的 ok 不可信, 写后 render 验证,
+    验证失败退出 1 并提示实际值。
 EOF
     ;;
   remove)
     cat <<'EOF'
-用法: siyuan av remove <avID|库名> --row <rowID>
-  删行, 删后 render 验证行已消失
+用法: siyuan av remove <avID|库名> --row <rowID> [--json|--markdown]
+    删行, 删后 render 验证行已消失
 EOF
     ;;
   verify)
     cat <<'EOF'
-用法: siyuan av verify <avID|库名> [--json]
-  逐行打印所有字段实际值 (验证写入的权威入口; 替代原 av_ops.js verify)
+用法: siyuan av verify <avID|库名> [--json|--markdown]
+    逐行打印所有字段实际值 (验证写入的权威入口; 替代原 av_ops.js verify)
+    --markdown 表格
 EOF
     ;;
   export)
@@ -78,16 +81,16 @@ EOF
     cat <<'EOF'
 siyuan av — 数据库 (属性视图) 子命令组 (适配 SiYuan-Kernel 3.8.0 B1/B2)
 
-  av list                   列出全部数据库 (名称+avID)
-  av keys <avID> [--json]   列字段 (3.8 keys 对象包装已适配)
-  av rows <avID> [--limit N] [-H] [--json]   列行数据 (走 render, TSV 可管道)
-  av get <avID> --row <ID> [--json]   单行详情
-  av add <avID> --values '<JSON>' [--content <标题>] [--block <doc-id>]
+  av list [--json|--markdown]    列出全部数据库 (名称+avID)
+  av keys <avID> [--json|--markdown]   列字段 (3.8 keys 对象包装已适配)
+  av rows <avID> [--limit N] [-H] [--json|--markdown]   列行数据 (走 render, TSV 可管道)
+  av get <avID> --row <ID> [--json|--markdown]   单行详情
+  av add <avID> --values '<JSON>' [--content <标题>] [--block <doc-id>] [--json|--markdown]
                             加行 (值按字段类型自动嵌套; @file/stdin 传含引号值)
-  av update <avID> --row <ID> --values '<JSON>'   改行 (写后 render 验证)
-  av remove <avID> --row <ID>   删行 (删后验证)
-  av verify <avID> [--json]   逐行打印实际值 (验证权威入口)
-  av export <avID>           导出全量 JSON (备份)
+  av update <avID> --row <ID> --values '<JSON>' [--json|--markdown]   改行 (写后 render 验证)
+  av remove <avID> --row <ID> [--json|--markdown]   删行 (删后验证)
+  av verify <avID> [--json|--markdown]   逐行打印实际值 (验证权威入口)
+  av export <avID>           导出全量 JSON (备份, 不参与输出模式)
 
 <avID|库名> 支持传 avID 或库名 (模糊搜首个匹配)。写操作后均 render 验证真实生效。
 EOF
@@ -194,80 +197,95 @@ sy_av_apply() { # <ctx> <av> <itemID> <built_json>
 # av list [--json] — 列出全部数据库
 # ---------------------------------------------------------------------------
 cmd_av_list() {
-  local json=$SY_JSON_DEFAULT
   while [[ $# -gt 0 ]]; do
     case "$1" in
-    --json)
-      json=1
+    --json | --markdown)
+      sy_mode_arg "$1"
       shift
       ;;
     -h | --help)
       av_usage list
       return 0
       ;;
-    *) sy_die 2 "av list: 未知参数 '$1'" "用法: siyuan av list [--json]" ;;
+    *) sy_die 2 "av list: 未知参数 '$1'" "用法: siyuan av list [--json|--markdown]" ;;
     esac
   done
   local out
   out="$(sy_json "av list" database search "")" || return $?
-  if [[ $json -eq 1 ]]; then
+  case "$SY_MODE" in
+  json)
     echo "$out"
-  else
+    ;;
+  markdown)
+    # 表格: 名称 | avID | 路径
+    echo "$out" | "$SY_NODE" "$SY_LIB_DIR/fmt.js" av-list-md
+    ;;
+  *)
     echo "$out" | "$SY_NODE" "$SY_LIB_DIR/fmt.js" av-search-text
-  fi
+    ;;
+  esac
 }
 
 # ---------------------------------------------------------------------------
 # av keys <avID> [--json] — 列字段 (适配 B1)
 # ---------------------------------------------------------------------------
 cmd_av_keys() {
-  local json=$SY_JSON_DEFAULT av=""
+  local av=""
   while [[ $# -gt 0 ]]; do
     case "$1" in
-    --json)
-      json=1
+    --json | --markdown)
+      sy_mode_arg "$1"
       shift
       ;;
     -h | --help)
       av_usage keys
       return 0
       ;;
-    -*) sy_die 2 "av keys: 未知参数 '$1'" "用法: siyuan av keys <avID|库名> [--json]" ;;
+    -*) sy_die 2 "av keys: 未知参数 '$1'" "用法: siyuan av keys <avID|库名> [--json|--markdown]" ;;
     *)
       if [[ -z "$av" ]]; then
         av="$1"
       else
-        sy_die 2 "av keys: 多余参数 '$1'" "用法: siyuan av keys <avID|库名> [--json]"
+        sy_die 2 "av keys: 多余参数 '$1'" "用法: siyuan av keys <avID|库名> [--json|--markdown]"
       fi
       shift
       ;;
     esac
   done
-  [[ -n "$av" ]] || sy_die 2 "av keys: 缺少 avID" "用法: siyuan av keys <avID|库名> [--json] (用 'siyuan av list' 查 avID)"
+  [[ -n "$av" ]] || sy_die 2 "av keys: 缺少 avID" "用法: siyuan av keys <avID|库名> [--json|--markdown] (用 'siyuan av list' 查 avID)"
   av="$(sy_av_resolve "av keys" "$av")" || return $?
   local out
   out="$(sy_json "av keys" database keys --av "$av")" || return $?
-  if [[ $json -eq 1 ]]; then
+  case "$SY_MODE" in
+  json)
     echo "$out"
-  else
+    ;;
+  markdown)
+    # 表格: 字段名 | 类型 | keyID (B1 对象包装先归一化)
+    local rows
+    rows="$(echo "$out" | "$SY_NODE" "$SY_LIB_DIR/fmt.js" av-keys-rows)" || return $?
+    echo "$rows" | "$SY_NODE" "$SY_LIB_DIR/fmt.js" md-table 字段名:name 类型:type keyID:id
+    ;;
+  *)
     echo "$out" | "$SY_NODE" "$SY_LIB_DIR/fmt.js" av-keys-text
-  fi
+    ;;
+  esac
 }
 
 # ---------------------------------------------------------------------------
 # av rows <avID> [--limit N] [-H] [--json] — 列行数据 (适配 B2, 走 render)
 # ---------------------------------------------------------------------------
 cmd_av_rows() {
-  local json=$SY_JSON_DEFAULT av="" limit=0 header=0
+  local av="" limit=0 header=0
   while [[ $# -gt 0 ]]; do
     case "$1" in
-    --json)
-      json=1
+    --json | --markdown)
+      sy_mode_arg "$1"
       shift
       ;;
     --limit | -l)
       limit="${2:?}"
-      [[ "$limit" =~ ^[0-9]+$ ]] || sy_die 2 "av rows: --limit 必须是数字, 收到 '$limit'" "用法: siyuan av rows <avID|库名> [--limit N] [-H] [--json]"
+      [[ "$limit" =~ ^[0-9]+$ ]] || sy_die 2 "av rows: --limit 必须是数字, 收到 '$limit'" "用法: siyuan av rows <avID|库名> [--limit N] [-H] [--json|--markdown]"
       shift 2
       ;;
     --header | -H)
@@ -278,37 +296,44 @@ cmd_av_rows() {
       av_usage rows
       return 0
       ;;
-    -*) sy_die 2 "av rows: 未知参数 '$1'" "用法: siyuan av rows <avID|库名> [--limit N] [-H] [--json]" ;;
+    -*) sy_die 2 "av rows: 未知参数 '$1'" "用法: siyuan av rows <avID|库名> [--limit N] [-H] [--json|--markdown]" ;;
     *)
       if [[ -z "$av" ]]; then
         av="$1"
       else
-        sy_die 2 "av rows: 多余参数 '$1'" "用法: siyuan av rows <avID|库名> [--limit N] [-H] [--json]"
+        sy_die 2 "av rows: 多余参数 '$1'" "用法: siyuan av rows <avID|库名> [--limit N] [-H] [--json|--markdown]"
       fi
       shift
       ;;
     esac
   done
-  [[ -n "$av" ]] || sy_die 2 "av rows: 缺少 avID" "用法: siyuan av rows <avID|库名> [--limit N] [-H] [--json]"
+  [[ -n "$av" ]] || sy_die 2 "av rows: 缺少 avID" "用法: siyuan av rows <avID|库名> [--limit N] [-H] [--json|--markdown]"
   av="$(sy_av_resolve "av rows" "$av")" || return $?
   local rd
   rd="$(sy_av_render_all "av rows" "$av" "$limit")" || return $?
-  if [[ $json -eq 1 ]]; then
+  case "$SY_MODE" in
+  json)
     echo "$rd" | "$SY_NODE" "$SY_LIB_DIR/fmt.js" av-render rows-json "$limit"
-  else
+    ;;
+  markdown)
+    # 表格: itemID | 标题 | 各字段 (列 = 可见字段)
+    echo "$rd" | "$SY_NODE" "$SY_LIB_DIR/fmt.js" av-render rows-md "$limit"
+    ;;
+  *)
     echo "$rd" | "$SY_NODE" "$SY_LIB_DIR/fmt.js" av-render rows "$limit" "$header"
-  fi
+    ;;
+  esac
 }
 
 # ---------------------------------------------------------------------------
 # av get <avID> --row <rowID> [--json] — 单行详情
 # ---------------------------------------------------------------------------
 cmd_av_get() {
-  local json=$SY_JSON_DEFAULT av="" row=""
+  local av="" row=""
   while [[ $# -gt 0 ]]; do
     case "$1" in
-    --json)
-      json=1
+    --json | --markdown)
+      sy_mode_arg "$1"
       shift
       ;;
     --row | -r)
@@ -319,27 +344,34 @@ cmd_av_get() {
       av_usage get
       return 0
       ;;
-    -*) sy_die 2 "av get: 未知参数 '$1'" "用法: siyuan av get <avID|库名> --row <rowID> [--json]" ;;
+    -*) sy_die 2 "av get: 未知参数 '$1'" "用法: siyuan av get <avID|库名> --row <rowID> [--json|--markdown]" ;;
     *)
       if [[ -z "$av" ]]; then
         av="$1"
       else
-        sy_die 2 "av get: 多余参数 '$1'" "用法: siyuan av get <avID|库名> --row <rowID> [--json]"
+        sy_die 2 "av get: 多余参数 '$1'" "用法: siyuan av get <avID|库名> --row <rowID> [--json|--markdown]"
       fi
       shift
       ;;
     esac
   done
-  [[ -n "$av" ]] || sy_die 2 "av get: 缺少 avID" "用法: siyuan av get <avID|库名> --row <rowID> [--json]"
-  [[ -n "$row" ]] || sy_die 2 "av get: 缺少 --row" "用法: siyuan av get <avID|库名> --row <rowID> [--json] (rowID 用 'siyuan av rows' 查看)"
+  [[ -n "$av" ]] || sy_die 2 "av get: 缺少 avID" "用法: siyuan av get <avID|库名> --row <rowID> [--json|--markdown]"
+  [[ -n "$row" ]] || sy_die 2 "av get: 缺少 --row" "用法: siyuan av get <avID|库名> --row <rowID> [--json|--markdown] (rowID 用 'siyuan av rows' 查看)"
   av="$(sy_av_resolve "av get" "$av")" || return $?
   local rd
   rd="$(sy_av_render_all "av get" "$av")" || return $?
-  if [[ $json -eq 1 ]]; then
+  case "$SY_MODE" in
+  json)
     echo "$rd" | "$SY_NODE" "$SY_LIB_DIR/fmt.js" av-render row-json "$row"
-  else
+    ;;
+  markdown)
+    # 键值表: 项目 | 值 (行 ID/标题/每字段)
+    echo "$rd" | "$SY_NODE" "$SY_LIB_DIR/fmt.js" av-render row-md "$row"
+    ;;
+  *)
     echo "$rd" | "$SY_NODE" "$SY_LIB_DIR/fmt.js" av-render row "$row"
-  fi
+    ;;
+  esac
 }
 
 # ---------------------------------------------------------------------------
@@ -363,11 +395,15 @@ cmd_av_add() {
       block="${2:?}"
       shift 2
       ;;
+    --json | --markdown)
+      sy_mode_arg "$1"
+      shift
+      ;;
     -h | --help)
       av_usage add
       return 0
       ;;
-    -*) sy_die 2 "av add: 未知参数 '$1'" "用法: siyuan av add <avID|库名> --values '<JSON>' [--content <标题>] [--block <doc-id>]" ;;
+    -*) sy_die 2 "av add: 未知参数 '$1'" "用法: siyuan av add <avID|库名> --values '<JSON>' [--content <标题>] [--block <doc-id>] [--json|--markdown]" ;;
     *)
       if [[ -z "$av" ]]; then
         av="$1"
@@ -420,7 +456,17 @@ cmd_av_add() {
   fi
 
   sy_av_apply "av add" "$av" "$item" "$built" >/dev/null || return $?
-  echo "$item"
+  case "$SY_MODE" in
+  json)
+    printf '%s' "$item" | "$SY_NODE" "$SY_LIB_DIR/fmt.js" json-ok-row "$item" 添加
+    ;;
+  markdown)
+    printf '%s' "$item" | "$SY_NODE" "$SY_LIB_DIR/fmt.js" md-ok-row "$item" 添加
+    ;;
+  *)
+    echo "$item"
+    ;;
+  esac
 }
 
 # ---------------------------------------------------------------------------
@@ -439,11 +485,15 @@ cmd_av_update() {
       row="${2:?}"
       shift 2
       ;;
+    --json | --markdown)
+      sy_mode_arg "$1"
+      shift
+      ;;
     -h | --help)
       av_usage update
       return 0
       ;;
-    -*) sy_die 2 "av update: 未知参数 '$1'" "用法: siyuan av update <avID|库名> --row <rowID> --values '<JSON>'" ;;
+    -*) sy_die 2 "av update: 未知参数 '$1'" "用法: siyuan av update <avID|库名> --row <rowID> --values '<JSON>' [--json|--markdown]" ;;
     *)
       if [[ -z "$av" ]]; then
         av="$1"
@@ -471,7 +521,23 @@ cmd_av_update() {
   has="$(echo "$rd" | "$SY_NODE" "$SY_LIB_DIR/fmt.js" av-render has-row "$row")"
   [[ "$has" == ok ]] || sy_die 1 "av update: 找不到行 '$row'" "运行 'siyuan av rows $av' 查看行 id"
 
-  sy_av_apply "av update" "$av" "$row" "$built" || return $?
+  if [[ "$SY_MODE" == "text" ]]; then
+    sy_av_apply "av update" "$av" "$row" "$built" || return $?
+  else
+    # --json/--markdown: 抑制 "ok" (stdout 只含模式输出)
+    sy_av_apply "av update" "$av" "$row" "$built" >/dev/null || return $?
+  fi
+  case "$SY_MODE" in
+  json)
+    printf '%s' "$row" | "$SY_NODE" "$SY_LIB_DIR/fmt.js" json-ok-row "$row" 更新
+    ;;
+  markdown)
+    printf '%s' "$row" | "$SY_NODE" "$SY_LIB_DIR/fmt.js" md-ok-row "$row" 更新
+    ;;
+  *)
+    : # 文本模式维持原行为 (无输出)
+    ;;
+  esac
 }
 
 # ---------------------------------------------------------------------------
@@ -485,11 +551,15 @@ cmd_av_remove() {
       row="${2:?}"
       shift 2
       ;;
+    --json | --markdown)
+      sy_mode_arg "$1"
+      shift
+      ;;
     -h | --help)
       av_usage remove
       return 0
       ;;
-    -*) sy_die 2 "av remove: 未知参数 '$1'" "用法: siyuan av remove <avID|库名> --row <rowID>" ;;
+    -*) sy_die 2 "av remove: 未知参数 '$1'" "用法: siyuan av remove <avID|库名> --row <rowID> [--json|--markdown]" ;;
     *)
       if [[ -z "$av" ]]; then
         av="$1"
@@ -515,44 +585,61 @@ cmd_av_remove() {
   rd="$(sy_av_render_all "av remove" "$av")" || return $?
   has="$(echo "$rd" | "$SY_NODE" "$SY_LIB_DIR/fmt.js" av-render has-row "$row")"
   [[ "$has" == none ]] || sy_die 1 "av remove: 删除未生效 (行 '$row' 仍在)" "重试, 或运行 'siyuan av verify $av' 查看实际行"
-  echo "ok"
+  case "$SY_MODE" in
+  json)
+    printf '%s' "$row" | "$SY_NODE" "$SY_LIB_DIR/fmt.js" json-ok-row "$row" 删除
+    ;;
+  markdown)
+    printf '%s' "$row" | "$SY_NODE" "$SY_LIB_DIR/fmt.js" md-ok-row "$row" 删除
+    ;;
+  *)
+    echo "ok"
+    ;;
+  esac
 }
 
 # ---------------------------------------------------------------------------
 # av verify <avID> [--json] — 逐行打印实际值 (验证权威入口)
 # ---------------------------------------------------------------------------
 cmd_av_verify() {
-  local json=$SY_JSON_DEFAULT av=""
+  local av=""
   while [[ $# -gt 0 ]]; do
     case "$1" in
-    --json)
-      json=1
+    --json | --markdown)
+      sy_mode_arg "$1"
       shift
       ;;
     -h | --help)
       av_usage verify
       return 0
       ;;
-    -*) sy_die 2 "av verify: 未知参数 '$1'" "用法: siyuan av verify <avID|库名> [--json]" ;;
+    -*) sy_die 2 "av verify: 未知参数 '$1'" "用法: siyuan av verify <avID|库名> [--json|--markdown]" ;;
     *)
       if [[ -z "$av" ]]; then
         av="$1"
       else
-        sy_die 2 "av verify: 多余参数 '$1'" "用法: siyuan av verify <avID|库名> [--json]"
+        sy_die 2 "av verify: 多余参数 '$1'" "用法: siyuan av verify <avID|库名> [--json|--markdown]"
       fi
       shift
       ;;
     esac
   done
-  [[ -n "$av" ]] || sy_die 2 "av verify: 缺少 avID" "用法: siyuan av verify <avID|库名> [--json]"
+  [[ -n "$av" ]] || sy_die 2 "av verify: 缺少 avID" "用法: siyuan av verify <avID|库名> [--json|--markdown]"
   av="$(sy_av_resolve "av verify" "$av")" || return $?
   local rd
   rd="$(sy_av_render_all "av verify" "$av")" || return $?
-  if [[ $json -eq 1 ]]; then
+  case "$SY_MODE" in
+  json)
     echo "$rd" | "$SY_NODE" "$SY_LIB_DIR/fmt.js" av-render verify-json
-  else
+    ;;
+  markdown)
+    # 表格: 全部行全部字段
+    echo "$rd" | "$SY_NODE" "$SY_LIB_DIR/fmt.js" av-render verify-md
+    ;;
+  *)
     echo "$rd" | "$SY_NODE" "$SY_LIB_DIR/fmt.js" av-render verify
-  fi
+    ;;
+  esac
 }
 
 # ---------------------------------------------------------------------------
