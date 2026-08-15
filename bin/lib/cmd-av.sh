@@ -16,56 +16,66 @@
 # av 组帮助 (bin/siyuan 的 sy_usage av 调用)
 av_usage() { # [子命令]
   case "${1:-}" in
-    list) cat <<'EOF'
+  list)
+    cat <<'EOF'
 用法: siyuan av list [--json]
   列出全部数据库 (名称+avID+所在路径)
 EOF
-;;
-    keys) cat <<'EOF'
+    ;;
+  keys)
+    cat <<'EOF'
 用法: siyuan av keys <avID|库名> [--json]
   列字段 (name, type, keyID; 3.8.0 keys 为 {id,name,keys:[]} 对象, 已适配 B1)
 EOF
-;;
-    rows) cat <<'EOF'
+    ;;
+  rows)
+    cat <<'EOF'
 用法: siyuan av rows <avID|库名> [--limit N] [-H] [--json]
   列行数据 (走 database render, 适配 B2); 文本=TSV 可管道: itemID<TAB>标题<TAB>字段值...
   -H 输出表头; --json 输出 [{itemID,title,fields:{字段名:值}}]
 EOF
-;;
-    get) cat <<'EOF'
+    ;;
+  get)
+    cat <<'EOF'
 用法: siyuan av get <avID|库名> --row <rowID> [--json]
   单行详情 (标题 + 每字段实际值)
 EOF
-;;
-    add) cat <<'EOF'
+    ;;
+  add)
+    cat <<'EOF'
 用法: siyuan av add <avID|库名> --values '<JSON>' [--content <标题>] [--block <doc-id>]
   加一行 (默认游离行; --block 绑定文档块)。--values 为 {字段名: 值} JSON,
   值按字段类型自动嵌套 (select 用 mSelect / date 自动转毫秒 / checkbox 布尔)。
   含引号的值用 --values @file 或管道 stdin 传入。输出新行 itemID。
 EOF
-;;
-    update) cat <<'EOF'
+    ;;
+  update)
+    cat <<'EOF'
 用法: siyuan av update <avID|库名> --row <rowID> --values '<JSON>'
   改行字段 (同 add 的值规则)。item update 的 ok 不可信, 写后 render 验证,
   验证失败退出 1 并提示实际值。
 EOF
-;;
-    remove) cat <<'EOF'
+    ;;
+  remove)
+    cat <<'EOF'
 用法: siyuan av remove <avID|库名> --row <rowID>
   删行, 删后 render 验证行已消失
 EOF
-;;
-    verify) cat <<'EOF'
+    ;;
+  verify)
+    cat <<'EOF'
 用法: siyuan av verify <avID|库名> [--json]
   逐行打印所有字段实际值 (验证写入的权威入口; 替代原 av_ops.js verify)
 EOF
-;;
-    export) cat <<'EOF'
+    ;;
+  export)
+    cat <<'EOF'
 用法: siyuan av export <avID|库名>
   导出全量 JSON (备份/迁移): [{itemID,docID,title,fields:{字段名:值}}]
 EOF
-;;
-    *) cat <<'EOF'
+    ;;
+  *)
+    cat <<'EOF'
 siyuan av — 数据库 (属性视图) 子命令组 (适配 SiYuan-Kernel 3.8.0 B1/B2)
 
   av list                   列出全部数据库 (名称+avID)
@@ -81,7 +91,7 @@ siyuan av — 数据库 (属性视图) 子命令组 (适配 SiYuan-Kernel 3.8.0 
 
 <avID|库名> 支持传 avID 或库名 (模糊搜首个匹配)。写操作后均 render 验证真实生效。
 EOF
-;;
+    ;;
   esac
 }
 
