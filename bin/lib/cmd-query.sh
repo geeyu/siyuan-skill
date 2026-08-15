@@ -90,7 +90,7 @@ cmd_ls() {
         # 叶子文档: 无子文档, 空列表
         case "$SY_MODE" in
         json) echo '[]' ;;
-        *) : ;;  # 文本/markdown 无输出
+        *) : ;; # 文本/markdown 无输出
         esac
         return 0
       fi
