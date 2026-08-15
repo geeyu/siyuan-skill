@@ -22,26 +22,28 @@ description: >
 ~/.pi/skills/siyuan/bin/siyuan <command> [args]
 ```
 
-shell 风格命令集 (类似 Linux 命令操作思源笔记): 默认人类可读文本 (行式可管道组合), `--json` 输出稳定字段 (agent 用), 写入操作返回 doc/block id。工作区 `/Users/geeyu/space/siyuan` (可被 `SIYUAN_WORKSPACE` 覆盖)。
+**shell 风格命令集** (像 Linux 命令一样操作思源笔记): 默认人类可读文本 (行式可管道组合), `--json` 输出稳定字段 (agent 用), 写入操作返回 doc/block id。工作区 `/Users/geeyu/space/siyuan` (可被 `SIYUAN_WORKSPACE` 覆盖)。
 
 ## 常用命令速查
 
-### 读取 (查询类, shell 风格)
+### 查询 (shell 风格, 输出行式可管道组合)
 | 命令 | 作用 |
 |------|------|
-| `ls [笔记本] [路径] [-l]` | 列笔记本/文档 (笔记本可传中文名, 路径支持 /hpath) |
-| `tree <doc>` | 标题树/大纲 |
+| `ls [笔记本] [路径] [-l]` | 列笔记本/文档 (笔记本可传中文名, 路径支持 /hpath; 无参列笔记本) |
+| `tree <doc> [-l]` | 标题树/大纲 (`-l` 附块 id) |
 | `cat <doc>` | 读文档 markdown 源 (最准, 不受索引滞后影响) |
 | `head/tail <doc> [-n N]` | 读文档开头/末尾 N 行 (默认 10) |
-| `find <关键词> [--notebook <nb>]` | 跨库搜文档标题, 输出 `doc_id<TAB>hpath<TAB>notebook` |
-| `grep <pattern> [-v] [-i] [-m 0-3]` | 内容全文检索; **管道输入时按行过滤** (`ls 工作 \| grep 调课`) |
+| `find <关键词> [--notebook <nb>] [-l N]` | 跨库搜文档标题, 输出 `doc_id<TAB>hPath<TAB>notebook_id` |
+| `grep <pattern> [-v] [-i] [-l] [-m 0-3] [--notebook <nb>]` | 内容全文检索; **管道输入时按行过滤** (真 grep) |
 | `which <doc-id\|标题\|/路径> [-v]` | 定位文档 → 输出唯一 doc id (多匹配报错并列出候选) |
 | `stat <doc>` | 文档元信息 |
-| `sql "<statement>" [-l N]` | 执行 SQL (默认 limit 100) |
-| `children <block-id>` | 列子块 (编辑前定位) |
-| `backlinks <block-id> [--keyword]` | 查反链 |
+| `sql "<statement>" [-l N] [-H]` | 执行 SQL (默认 limit 100, 文本=TSV 行) |
+| `children <block-id>` | 列子块 (编辑前定位): `id<TAB>type<TAB>content` |
+| `backlinks <block-id> [--keyword <kw>]` | 查反链 |
 
-> `<doc>` 可以是 doc-id / 标题 / /完整路径; 组合示例: `siyuan cat $(siyuan which /工作/调课)`、`siyuan ls 工作 | siyuan grep 调课`。旧命令名 list/read/get/outline/search/notebooks 保留为别名。
+> `<doc>` 可以是 doc-id / 标题 / /完整路径 (用 `which` 定位, 多匹配报错并列出候选)。
+> 组合示例: `siyuan ls 工作 | siyuan grep 调课`、`siyuan cat $(siyuan which /工作/调课)`、`siyuan grep 调课 -l | head -5`。
+> 旧命令名 `notebooks/nb/list/read/get/outline/search/create/bl/rm` 保留为别名 (完整命令总表见 [references/commands.md](references/commands.md))。
 
 ### 写入/编辑
 | 命令 | 作用 |
@@ -55,8 +57,8 @@ shell 风格命令集 (类似 Linux 命令操作思源笔记): 默认人类可�
 | `rename <doc> <新标题>` | 重命名 (IAL title + H1 同步, 避免不一致), 返回文档 id |
 | `write --notebook <nb> --title <t> [--parent-id <pid> \| --path <hpath>] [--file\|stdin]` | 建文档 (推荐 --parent-id), 返回 id |
 | `append <doc-id> [--data\|--file\|stdin]` | 追加到文档末尾 |
-| `insert-block --previous <bid>\|--parent <doc-id> [--data]` | 插入块 |
-| `update-block <block-id> [--data\|--file]` | 替换块内容 |
+| `insert-block --previous <bid>\|--parent <doc-id> [--data\|--file\|stdin]` | 插入块 |
+| `update-block <block-id> [--data\|--file\|stdin]` | 替换块内容 |
 | `replace-doc <doc-id> [--data\|--file\|stdin]` | 替换整篇文档 (删旧写新, 保留标题) |
 | `delete-block <block-id>` | 删除块 |
 | `move <doc-id> --parent-id <pid>` | 移动文档到另一父文档下 |
@@ -67,7 +69,7 @@ shell 风格命令集 (类似 Linux 命令操作思源笔记): 默认人类可�
 ### 底层透传 (封装层未覆盖的完整能力)
 | 命令 | 作用 |
 |------|------|
-| `raw <args...>` | 透传给 SiYuan-Kernel (自带 -w) |
+| `raw <args...>` | 透传给 SiYuan-Kernel (自带 -w, 默认 table, 可加 `-f json`) |
 | `raw-help <subcommand...>` | 查底层命令帮助, 例 `raw-help block insert` |
 
 **完整的底层命令参考** (24 类命令: notebook/document/block/outline/ref/sql/search/database/attr/bookmark/tag/dailynote/file/export/import/asset/history/inbox/template/repo/sync/system/workspace/serve): 见 [references/commands.md](references/commands.md)。
@@ -80,7 +82,23 @@ siyuan raw block prepend --parent <id> [--data]     # 文档开头插入块
 siyuan raw block move --id <id> --parent <pid>      # 移动块
 siyuan raw block kramdown --id <id>                 # 原始 kramdown (含块属性 {: id=...})
 siyuan raw export docx --id <id> --output <file>    # 导出 Word
+siyuan raw repo diff --left <id> --right <id>       # 对比两个数据快照
 ```
+
+### 计划命名 ↔ 实现命令对照
+
+重构计划的 Linux 风格命名与最终实现命令的对应关系 (计划名未直接实现, 功能由下表命令提供):
+
+| 计划名 | 实现命令 | 说明 |
+|------|------|------|
+| `touch` (建空文档) | `write` | 建文档, 内容可留空 |
+| `edit` (编辑) | `append` / `update-block` / `replace-doc` / `insert-block` | 追加 / 改块 / 整体替换 / 插块 |
+| `mv` (移动) | `move` | 移动文档到另一父文档 |
+| `cp` (复制) | `raw document duplicate` | 复制文档 |
+| `rm` (删除) | `remove` (别名 `rm` ✅) | 删除文档 |
+| `diff` (对比) | `cat <docA> > a.md; cat <docB> > b.md; diff a.md b.md` / `raw repo diff` | 文档内容对比 / 快照对比 |
+| `rename` (改名) | `raw document rename` | 只改 IAL title, 不改 H1 |
+| `av` (数据库) | `raw database ...` + `scripts/av_ops.js` | 见 [references/database.md](references/database.md) |
 
 ## 核心约定 (高频必读)
 
@@ -139,7 +157,7 @@ EOF
 
 ### 2. 搜已有笔记 + 读内容
 ```bash
-siyuan find "调课"        # 搜文档: doc_id<TAB>hpath<TAB>notebook
+siyuan find "调课"        # 搜文档: doc_id<TAB>hPath<TAB>notebook_id
 DOC=$(siyuan which 调课)   # 定位文档 → doc id (同名多匹配时报错并列出候选)
 siyuan cat "$DOC"         # 读 markdown 源 (准)
 siyuan tree "$DOC"        # 标题树
@@ -162,14 +180,23 @@ siyuan cp "$DOC" --to "$(siyuan which /目标目录)"   # 复制
 siyuan rm "$DOC"                                    # 删除
 ```
 
-### 4. 定位目录 + 移动文档
+### 4. 管道组合 (命令可组合)
+```bash
+siyuan ls 工作 | siyuan grep 调课              # 过滤文档列表
+siyuan ls 工作 | siyuan grep -v 废弃           # 排除
+siyuan grep 调课 -l | head -5                  # 内容命中的前 5 篇文档
+siyuan cat $(siyuan which /工作/调课)           # 定位并读文档
+siyuan find 调课 | siyuan grep 供应链           # 标题过滤
+```
+
+### 5. 定位目录 + 移动文档
 ```bash
 # 同名平级目录 (如 调课/调场) 用完整路径消歧
 NEW_PARENT=$(siyuan which /调场)
 siyuan move <doc-id> --parent-id "$NEW_PARENT"
 ```
 
-### 5. 录入排查记录到数据库
+### 6. 录入排查记录到数据库
 见 [references/database.md](references/database.md) 的「完整录入示例」。
 
 ## 工作区信息

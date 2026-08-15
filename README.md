@@ -58,15 +58,9 @@ siyuan which 标题                       # 定位文档 → doc id
 siyuan stat <doc>                       # 文档元信息
 siyuan sql "SELECT ..."                 # SQL 查询
 siyuan write --notebook 工作 --title "T" --parent-id <pid>   # 建文档
-siyuan touch --notebook 工作 --title "T" --parent <pid>       # shell 风格建文档
-siyuan edit <doc> --append "内容"                            # 追加 (--prepend/--update/--replace)
-siyuan rename <doc> "新标题"                                 # 改名 (IAL + H1 同步)
-siyuan mv <doc> --to <parent-id>                             # 移动 (同/跨笔记本)
-siyuan cp <doc> --to <parent-id>                             # 复制
-siyuan diff <docA> <docB>                                    # 对比两文档 (统一 diff)
-siyuan rm <doc>                                              # 删除
-siyuan raw database search "库名"       # 底层透传 (见 references/database.md)
 ```
+
+旧命令名 `notebooks/nb/list/read/get/outline/search/create/bl/rm` 保留为别名; 计划命名 (touch/edit/mv/cp/diff/rename/av) 与实现命令的对应关系见 SKILL.md 与 references/commands.md。
 
 组合 (管道):
 ```bash

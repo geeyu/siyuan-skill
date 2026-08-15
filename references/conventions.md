@@ -1,23 +1,24 @@
 # 思源操作约定与源码依据
 
 > 详细版约定, 含源码级根因。日常操作看 SKILL.md 顶部精简版即可, 遇到异常或想深入理解行为时查本文件。
-> 源码: `/Users/geeyu/space/code/github/siyuan`
+> 版本: SiYuan-Kernel 3.8.0; 源码: `/Users/geeyu/space/code/github/siyuan`
+> 命令名以新 shell 风格封装为准 (`ls/cat/tree/which/stat/...`; 旧名 `list/read/get/outline/search/notebooks` 为别名)。
 
 ## 1. notebook 参数支持中文名
 
-`siyuan list 工作` 会自动解析成 notebook id。
-源码: 封装层 `bin/siyuan` 的 `resolve_notebook()` 函数, 先匹配 id 格式正则 `^[0-9]{14}-[a-z0-9]{6,8}$`, 不匹配则按名查 `notebook list`。
+`siyuan ls 工作` 会自动解析成 notebook id。
+源码: 封装层 `bin/lib/framework.sh` 的 `sy_resolve_notebook()`, 先匹配 id 格式正则 `^[0-9]{14}-[a-z0-9]{6,8}$`, 不匹配则按名查 `notebook list`。
 
 ## 2. 创建文档优先用 --parent-id
 
 思源 `createDocWithMd` 按 hpath 创建会重复建同名中间块 (API 固有问题)。
-封装层已用「createDocWithMd + moveDocs + 删中间块」三步自动处理:
+封装层 `write` 已用「createDocWithMd + moveDocs + 删中间块」三步自动处理:
 1. `createDocWithMd` 按完整 hpath 创建 (会产生中间块)
 2. `moveDocs` 把新文档移到目标父块下
 3. 删除产生的空中间块 (`removeDocByID`)
 
 调用方只需传 `--parent-id`, 不会有副作用。
-源码: 封装层 `cmd_write`, 思源侧 `kernel/api/filetree.go` createDocWithMd。
+源码: 封装层 `bin/lib/cmd-write.sh` 的 `cmd_write`, 思源侧 `kernel/api/filetree.go` createDocWithMd。
 
 ## 3. markdown 内容传入方式
 
@@ -28,26 +29,25 @@
 
 封装层统一用 `cmd_*` 里的 `data=$(cat)` 兜底 stdin。
 
-## 4. 判断写入成功看 read, 不看 SQL
+## 4. 判断写入成功看 cat, 不看 SQL
 
 思源 block update/delete 后, SQL 查 `content` 字段可能滞后 (事务队列 `FlushTxQueue` 异步索引)。
 - SQL (`siyuan sql`) 查的是数据库, content 由事务队列异步更新, 秒级滞后
-- `siyuan read <doc-id>` 走 `export md` 直接读文件树, 是准的
+- `siyuan cat <doc-id>` 走 `export md` 直接读文件树, 是准的
 
 索引滞后通常秒级, 实在没刷新 `sleep 2-3` 后再查, 不要反复重试。
 源码: `kernel/model/file.go` RenameDoc 调 `FlushTxQueue()`; `kernel/sql/block.go` `updateRootContent` 确认 content 由事务更新。
 
 ## 5. 文档名由 IAL title 决定, 不是 H1
 
-`document rename` 只改 IAL `title` 属性, 不改文档内 H1 文本。
+`raw document rename` 只改 IAL `title` 属性, 不改文档内 H1 文本。
 源码: `kernel/model/file.go` 的 `RenameDoc`, 仅 `tree.Root.SetIALAttr("title", title)`, 不动 H1 块。
 
 默认建文档时 IAL title 与首个 H1 一致, 所以像「跟随 H1」, 但 rename 后两者会不一致。
 要 H1 也同步改名, 需额外:
 ```bash
-# 先定位 H1 块 id
-H1=$(siyuan sql "SELECT id FROM blocks WHERE root_id='$DOC' AND type='h' AND subtype='h1' LIMIT 1" \
-  | python3 -c "import sys,json;print(json.load(sys.stdin)[0]['id'])")
+# 先定位 H1 块 id (sql 文本输出为 TSV 行, 单列查询取首行即可)
+H1=$(siyuan sql "SELECT id FROM blocks WHERE root_id='$DOC' AND type='h' AND subtype='h1' LIMIT 1" | head -1)
 siyuan update-block "$H1" --data "# 新标题"
 ```
 
@@ -72,7 +72,7 @@ siyuan update-block "$H1" --data "# 新标题"
 底层 `block insert` 要求 `--parent` 必填, `--previous` 只是兄弟锚点 (插入在该块之后)。
 封装 `siyuan insert-block --previous <id>` 会自动查其 parent:
 ```bash
-parent=$(siyuan sql "SELECT parent_id FROM blocks WHERE id='$prev'" ...)
+parent=$(siyuan sql "SELECT parent_id FROM blocks WHERE id='$prev'" | head -1)
 ```
 找不到 parent 时报错提示显式传 `--parent`。
 源码: 封装层 `cmd_insert_block`; 思源侧 `blockInsertCmd`。
@@ -87,7 +87,7 @@ parent=$(siyuan sql "SELECT parent_id FROM blocks WHERE id='$prev'" ...)
 
 `database item update` 对错误 value 结构**静默返回 ok** 但不落库 (CLI bug)。
 根因: `--value` 的 JSON 被反序列化到 `av.Value` 结构体, 其字段是嵌套对象 (`text/url/date/mSelect/checkbox/...`), 用顶层 `content`/`checked` 会被丢弃。
-**必须用 `database get` 验证 values 字段是否有值**。
+**必须用 `database render` 验证行数据是否有值** (3.8.0 起 `database get` 无行数据, 见 database.md B2)。
 详见 [database.md](database.md) 的「值结构对照表」。
 
 ## 11. 数据库 item add 不返回 itemID

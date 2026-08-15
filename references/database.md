@@ -22,7 +22,24 @@
    ```
    `database search` 返回里 `avID` 字段就是要用的 ID。
 
-## 命令清单
+## ⚠️ 3.8.0 breaking 变更 (B1/B2, 必读)
+
+> 来源: `COMPAT-REPORT-3.8.0.md` (对实际安装内核 3.8.0 验证)。3.7 → 3.8 有两处**输出结构**变更, 影响所有依赖旧结构的流程:
+
+### B1. `database keys` 输出从数组 → 对象包装
+
+- 旧 (3.7): `[...]` 字段数组
+- 新 (3.8): `{"id": "<avID>", "name": "<库名>", "keys": [...]}` (**字段数组在 `keys` 里**)
+- 用法: 解析后取 `data.keys`; 脚本需兼容判断 `Array.isArray(out) ? out : out.keys`
+
+### B2. `database get` 不再返回行数据 (keyValues 字段消失)
+
+- 旧 (3.7): `database get` 返回含 `keyValues` (每字段的 values 数组, 含行数据)
+- 新 (3.8): `database get` 仅返回 `{id, name, keys, views}` (**结构元数据, 无行数据**)
+- 行数据改由 **`database render`** 提供: `view.rows[].id` = itemID (行 ID); `view.rows[].cells[].value` = `{keyID, blockID, type, ...}` (单元格值, blockID 为绑定文档块 ID)
+- 影响: 「item add 后反查 itemID」「写入后用 get 验证」两处流程全部改为 `render` (见下)
+
+## 命令清单 (av 命令组)
 
 ### `siyuan av` 命令组 (推荐, 适配 3.8.0)
 
@@ -140,7 +157,7 @@
 
 ## ⚠️ value 含双引号时的传参陷阱 (关键经验)
 
-`--value '<json>'` 用单引号包裹时, JSON 内的双引号 + shell 引号嵌套极易出错, 导致 value 解析失败**静默不落库** (CLI 仍返回 ok)。这是本次重建排查记录库踩到的核心坑。
+`--value '<json>'` 用单引号包裹时, JSON 内的双引号 + shell 引号嵌套极易出错, 导致 value 解析失败**静默不落库** (CLI 仍返回 ok)。这是重建排查记录库踩到的核心坑。
 
 **根因**: shell 对 `'..."..."...'` 的引号处理与 JSON 内部双引号冲突, 传入内核的 value 字符串被截断或破坏, 反序列化到 av.Value 时子对象为 nil, 静默跳过。
 
@@ -182,8 +199,8 @@ CLI 和 require 两种用法:
 # CLI 用法
 node scripts/av_ops.js search "排查记录"        # 按名查 avID
 node scripts/av_ops.js keys <avID>               # 列字段
-node scripts/av_ops.js verify <avID>              # 打印所有行字段实际值 (验证写入)
-node scripts/av_ops.js export <avID>              # 导出为 JSON (备份/迁移用)
+node scripts/av_ops.js verify <avID>             # 打印所有行字段实际值 (验证写入)
+node scripts/av_ops.js export <avID>             # 导出为 JSON (备份/迁移用)
 ```
 
 ```javascript
@@ -209,6 +226,8 @@ av.fillRow(AV, itemId, {
 // 验证
 av.verify(AV);
 ```
+
+> **3.8.0 适配要点** (对应 COMPAT-REPORT-3.8.0.md 的 B1/B2): av_ops.js 内部数据访问按 3.8.0 结构处理 — `listKeys` 兼容对象包装 (`Array.isArray(out) ? out : out.keys`); 行数据 (itemID 反查 / verify / export) 从 `database get` 的 `keyValues` 改为 `database render` 的 `view.rows`。**对外接口不变** (search/keys/verify/export/addRow/setCellXxx/fillRow)。
 
 便捷方法对照表 (自动构造正确嵌套结构, 无需记 JSON):
 
