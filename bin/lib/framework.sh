@@ -13,9 +13,9 @@
 # ---------------------------------------------------------------------------
 SIYUAN_KERNEL="${SIYUAN_KERNEL:-/Applications/SiYuan.app/Contents/Resources/kernel/SiYuan-Kernel}"
 SIYUAN_WORKSPACE="${SIYUAN_WORKSPACE:-/Users/geeyu/space/siyuan}"
-SIYUAN_FORMAT="${SIYUAN_FORMAT:-text}"                  # text | json (json = 默认 --json)
-SIYUAN_TIMEOUT="${SIYUAN_TIMEOUT:-60}"                  # 内核调用超时(秒), 0=不超时
-SIYUAN_DEFAULT_NOTEBOOK="${SIYUAN_DEFAULT_NOTEBOOK:-}"  # 设置后 `ls` 默认列该笔记本
+SIYUAN_FORMAT="${SIYUAN_FORMAT:-text}"                 # text | json (json = 默认 --json)
+SIYUAN_TIMEOUT="${SIYUAN_TIMEOUT:-60}"                 # 内核调用超时(秒), 0=不超时
+SIYUAN_DEFAULT_NOTEBOOK="${SIYUAN_DEFAULT_NOTEBOOK:-}" # 设置后 `ls` 默认列该笔记本
 SIYUAN_API_HOST="${SIYUAN_API_HOST:-127.0.0.1}"
 SIYUAN_API_PORT="${SIYUAN_API_PORT:-6806}"
 
@@ -29,7 +29,10 @@ SY_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SY_NODE="$(command -v node 2>/dev/null || true)"
 if [[ -z "$SY_NODE" ]]; then
   for d in "$HOME"/.local/share/fnm/node-versions/*/installation/bin/node "$HOME"/.fnm/node-versions/*/installation/bin/node /opt/homebrew/bin/node; do
-    if [[ -x "$d" ]]; then SY_NODE="$d"; break; fi
+    if [[ -x "$d" ]]; then
+      SY_NODE="$d"
+      break
+    fi
   done
 fi
 if [[ -z "$SY_NODE" ]]; then
@@ -44,7 +47,6 @@ SY_JSON_DEFAULT=0
 # shellcheck disable=SC2034
 [[ "$SIYUAN_FORMAT" == "json" ]] && SY_JSON_DEFAULT=1
 
-
 # ---------------------------------------------------------------------------
 # 命令注册表 (bash 3.2 无关联数组, 用并行数组)
 # ---------------------------------------------------------------------------
@@ -53,7 +55,8 @@ SY_CMD_HANDLERS=()
 
 # sy_register <命令名> <处理函数> [别名...]
 sy_register() {
-  local name="$1" handler="$2"; shift 2
+  local name="$1" handler="$2"
+  shift 2
   SY_CMD_NAMES+=("$name")
   SY_CMD_HANDLERS+=("$handler")
   local a
@@ -65,7 +68,8 @@ sy_register() {
 
 # sy_dispatch <命令名> <args...> — 查注册表分发 (含别名), 返回处理函数退出码
 sy_dispatch() {
-  local cmd="$1"; shift
+  local cmd="$1"
+  shift
   local i
   for i in "${!SY_CMD_NAMES[@]}"; do
     if [[ "${SY_CMD_NAMES[$i]}" == "$cmd" ]]; then
@@ -95,7 +99,10 @@ sy_die() { # sy_die <退出码> <原因> [建议]
 # ---------------------------------------------------------------------------
 sy_kernel() {
   local want_json=0
-  if [[ "${1:-}" == "-f" ]]; then want_json=1; shift; fi
+  if [[ "${1:-}" == "-f" ]]; then
+    want_json=1
+    shift
+  fi
   local args=(-w "$SIYUAN_WORKSPACE")
   [[ $want_json -eq 1 ]] && args+=(-f json)
   args+=("$@")
@@ -132,7 +139,8 @@ JS
 # 内核调用 + JSON 校验; 失败统一报错退出 (超时=124, 其余=1)
 #   sy_json <上下文> <args...> — stdout: 内核 JSON
 sy_json() {
-  local ctx="$1"; shift
+  local ctx="$1"
+  shift
   local out rc=0
   out="$(sy_kernel -f "$@")" || rc=$?
   if [[ $rc -eq 124 ]]; then
@@ -149,7 +157,8 @@ sy_json() {
 # 内核调用 + 非零即报错 (用于文本输出类; 不校验 JSON)
 #   sy_kernel_or_die <上下文> <args...> — stdout: 内核输出
 sy_kernel_or_die() {
-  local ctx="$1"; shift
+  local ctx="$1"
+  shift
   local rc=0
   sy_kernel "$@" || rc=$?
   if [[ $rc -eq 124 ]]; then
@@ -212,8 +221,8 @@ sy_locate_docs() { # <ctx> <引用>
     # 精确 hpath 无匹配 -> 按标题回退
   fi
   # 标题: document search, 精确同名优先
-  sy_json "$ctx" document search "$ref" \
-    | "$SY_NODE" "$SY_LIB_DIR/fmt.js" docs-search 1 "" "" "$ref" || return $?
+  sy_json "$ctx" document search "$ref" |
+    "$SY_NODE" "$SY_LIB_DIR/fmt.js" docs-search 1 "" "" "$ref" || return $?
 }
 
 # 解析文档引用为唯一 doc id; 无/多匹配时报错 (多匹配时列出候选)
@@ -238,6 +247,6 @@ sy_resolve_doc() {
 #   sy_doc_meta <ctx> <doc-id> -> stdout: "hPath<TAB>box"
 sy_doc_meta() {
   local ctx="$1" id="$2"
-  sy_json "$ctx" sql "SELECT hpath, box FROM blocks WHERE id='$id'" \
-    | "$SY_NODE" "$SY_LIB_DIR/fmt.js" meta || return $?
+  sy_json "$ctx" sql "SELECT hpath, box FROM blocks WHERE id='$id'" |
+    "$SY_NODE" "$SY_LIB_DIR/fmt.js" meta || return $?
 }

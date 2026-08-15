@@ -10,12 +10,27 @@ cmd_sql() {
   local args=()
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      --json) json=1; shift;;
-      -l|--limit) limit="${2:?}"; shift 2;;
-      -H|--header) header=1; shift;;
-      -h|--help) sy_usage sql; return 0;;
-      -*) sy_die 2 "sql: 未知参数 '$1'" "用法: siyuan sql \"<语句>\" [-l N] [-H] [--json]";;
-      *) args+=("$1"); shift;;
+    --json)
+      json=1
+      shift
+      ;;
+    -l | --limit)
+      limit="${2:?}"
+      shift 2
+      ;;
+    -H | --header)
+      header=1
+      shift
+      ;;
+    -h | --help)
+      sy_usage sql
+      return 0
+      ;;
+    -*) sy_die 2 "sql: 未知参数 '$1'" "用法: siyuan sql \"<语句>\" [-l N] [-H] [--json]" ;;
+    *)
+      args+=("$1")
+      shift
+      ;;
     esac
   done
   [[ -n "${args[0]:-}" ]] || sy_die 2 "sql: 缺少 SQL 语句" "用法: siyuan sql \"<statement>\" [-l N] [--json] (例: siyuan sql \"SELECT id,hpath FROM blocks WHERE type='d' LIMIT 5\")"
@@ -53,10 +68,19 @@ cmd_children() {
   local args=()
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      --json) json=1; shift;;
-      -h|--help) sy_usage children; return 0;;
-      -*) sy_die 2 "children: 未知参数 '$1'" "用法: siyuan children <block-id> [--json]";;
-      *) args+=("$1"); shift;;
+    --json)
+      json=1
+      shift
+      ;;
+    -h | --help)
+      sy_usage children
+      return 0
+      ;;
+    -*) sy_die 2 "children: 未知参数 '$1'" "用法: siyuan children <block-id> [--json]" ;;
+    *)
+      args+=("$1")
+      shift
+      ;;
     esac
   done
   [[ -n "${args[0]:-}" ]] || sy_die 2 "children: 缺少块 id" "用法: siyuan children <block-id> [--json]"
@@ -77,11 +101,23 @@ cmd_backlinks() {
   local args=()
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      --json) json=1; shift;;
-      --keyword|-k) kw="${2:?}"; shift 2;;
-      -h|--help) sy_usage backlinks; return 0;;
-      -*) sy_die 2 "backlinks: 未知参数 '$1'" "用法: siyuan backlinks <block-id> [--keyword <kw>] [--json]";;
-      *) args+=("$1"); shift;;
+    --json)
+      json=1
+      shift
+      ;;
+    --keyword | -k)
+      kw="${2:?}"
+      shift 2
+      ;;
+    -h | --help)
+      sy_usage backlinks
+      return 0
+      ;;
+    -*) sy_die 2 "backlinks: 未知参数 '$1'" "用法: siyuan backlinks <block-id> [--keyword <kw>] [--json]" ;;
+    *)
+      args+=("$1")
+      shift
+      ;;
     esac
   done
   [[ -n "${args[0]:-}" ]] || sy_die 2 "backlinks: 缺少块 id" "用法: siyuan backlinks <block-id> [--keyword <kw>] [--json]"

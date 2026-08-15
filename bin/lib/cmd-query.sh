@@ -13,11 +13,23 @@ cmd_ls() {
   local args=()
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      --json) json=1; shift;;
-      -l) long=1; shift;;
-      -h|--help) sy_usage ls; return 0;;
-      -*) sy_die 2 "ls: 未知参数 '$1'" "用法: siyuan ls [笔记本] [路径] [-l] [--json]";;
-      *) args+=("$1"); shift;;
+    --json)
+      json=1
+      shift
+      ;;
+    -l)
+      long=1
+      shift
+      ;;
+    -h | --help)
+      sy_usage ls
+      return 0
+      ;;
+    -*) sy_die 2 "ls: 未知参数 '$1'" "用法: siyuan ls [笔记本] [路径] [-l] [--json]" ;;
+    *)
+      args+=("$1")
+      shift
+      ;;
     esac
   done
   local nb="${args[0]:-}" pth="${args[1]:-}"
@@ -25,7 +37,8 @@ cmd_ls() {
   if [[ -n "$SIYUAN_DEFAULT_NOTEBOOK" && -z "$nb" ]]; then
     nb="$SIYUAN_DEFAULT_NOTEBOOK"
   elif [[ -n "$SIYUAN_DEFAULT_NOTEBOOK" && -z "${args[1]:-}" && "$nb" == /* ]]; then
-    pth="$nb"; nb="$SIYUAN_DEFAULT_NOTEBOOK"
+    pth="$nb"
+    nb="$SIYUAN_DEFAULT_NOTEBOOK"
   fi
 
   if [[ -z "$nb" ]]; then
@@ -73,11 +86,23 @@ cmd_tree() {
   local args=()
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      --json) json=1; shift;;
-      -l) long=1; shift;;
-      -h|--help) sy_usage tree; return 0;;
-      -*) sy_die 2 "tree: 未知参数 '$1'" "用法: siyuan tree <doc> [-l] [--json]";;
-      *) args+=("$1"); shift;;
+    --json)
+      json=1
+      shift
+      ;;
+    -l)
+      long=1
+      shift
+      ;;
+    -h | --help)
+      sy_usage tree
+      return 0
+      ;;
+    -*) sy_die 2 "tree: 未知参数 '$1'" "用法: siyuan tree <doc> [-l] [--json]" ;;
+    *)
+      args+=("$1")
+      shift
+      ;;
     esac
   done
   [[ -n "${args[0]:-}" ]] || sy_die 2 "tree: 缺少文档参数" "用法: siyuan tree <doc-id|标题|/路径> [-l] [--json]"
@@ -103,10 +128,19 @@ cmd_cat() {
   local args=()
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      --json) json=1; shift;;
-      -h|--help) sy_usage cat; return 0;;
-      -*) sy_die 2 "cat: 未知参数 '$1'" "用法: siyuan cat <doc-id|标题|/路径> [--json]";;
-      *) args+=("$1"); shift;;
+    --json)
+      json=1
+      shift
+      ;;
+    -h | --help)
+      sy_usage cat
+      return 0
+      ;;
+    -*) sy_die 2 "cat: 未知参数 '$1'" "用法: siyuan cat <doc-id|标题|/路径> [--json]" ;;
+    *)
+      args+=("$1")
+      shift
+      ;;
     esac
   done
   [[ -n "${args[0]:-}" ]] || sy_die 2 "cat: 缺少文档参数" "用法: siyuan cat <doc-id|标题|/路径> [--json]"
@@ -120,7 +154,8 @@ cmd_cat() {
     local meta
     meta="$(sy_doc_meta cat "$doc")"
     local hpath box
-    hpath="${meta%%$'\t'*}"; box="${meta#*$'\t'}"
+    hpath="${meta%%$'\t'*}"
+    box="${meta#*$'\t'}"
     printf '%s' "$md" | "$SY_NODE" "$SY_LIB_DIR/fmt.js" cat-json "$doc" "$hpath" "$box"
   else
     local rc=0
@@ -133,17 +168,33 @@ cmd_cat() {
 # head / tail <doc> [-n N] [--json]   (默认 10 行, 内部 cat 截断, 不新增内核调用)
 # ---------------------------------------------------------------------------
 sy_head_tail() {
-  local mode="$1"; shift
+  local mode="$1"
+  shift
   local n=10 json=$SY_JSON_DEFAULT
   local args=()
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      -n|--lines) n="${2:?}"; shift 2;;
-      -n[0-9]*) n="${1#-n}"; shift;;
-      --json) json=1; shift;;
-      -h|--help) sy_usage "$mode"; return 0;;
-      -*) sy_die 2 "$mode: 未知参数 '$1'" "用法: siyuan $mode <doc> [-n N] [--json]";;
-      *) args+=("$1"); shift;;
+    -n | --lines)
+      n="${2:?}"
+      shift 2
+      ;;
+    -n[0-9]*)
+      n="${1#-n}"
+      shift
+      ;;
+    --json)
+      json=1
+      shift
+      ;;
+    -h | --help)
+      sy_usage "$mode"
+      return 0
+      ;;
+    -*) sy_die 2 "$mode: 未知参数 '$1'" "用法: siyuan $mode <doc> [-n N] [--json]" ;;
+    *)
+      args+=("$1")
+      shift
+      ;;
     esac
   done
   [[ -n "${args[0]:-}" ]] || sy_die 2 "$mode: 缺少文档参数" "用法: siyuan $mode <doc-id|标题|/路径> [-n N] [--json]"
@@ -178,12 +229,27 @@ cmd_find() {
   local args=()
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      --json) json=1; shift;;
-      --notebook|-n) nb="${2:?}"; shift 2;;
-      -l|--limit) limit="${2:?}"; shift 2;;
-      -h|--help) sy_usage find; return 0;;
-      -*) sy_die 2 "find: 未知参数 '$1'" "用法: siyuan find <关键词> [--notebook <nb>] [-l N] [--json]";;
-      *) args+=("$1"); shift;;
+    --json)
+      json=1
+      shift
+      ;;
+    --notebook | -n)
+      nb="${2:?}"
+      shift 2
+      ;;
+    -l | --limit)
+      limit="${2:?}"
+      shift 2
+      ;;
+    -h | --help)
+      sy_usage find
+      return 0
+      ;;
+    -*) sy_die 2 "find: 未知参数 '$1'" "用法: siyuan find <关键词> [--notebook <nb>] [-l N] [--json]" ;;
+    *)
+      args+=("$1")
+      shift
+      ;;
     esac
   done
   [[ -n "${args[0]:-}" ]] || sy_die 2 "find: 缺少关键词" "用法: siyuan find <关键词> [--notebook <nb>] [--json]"
@@ -214,17 +280,47 @@ cmd_grep() {
   local args=()
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      -v) invert=1; shift;;
-      -i) ignore=1; shift;;
-      -l) listonly=1; shift;;
-      -m|--method) method="${2:?}"; shift 2;;
-      -n|--notebook) nb="${2:?}"; shift 2;;
-      -s|--page-size) pagesize="${2:?}"; shift 2;;
-      --content) content=1; shift;;
-      --json) json=1; shift;;
-      -h|--help) sy_usage grep; return 0;;
-      -*) sy_die 2 "grep: 未知参数 '$1'" "用法: siyuan grep <pattern> [-v] [-i] [-l] [-m 0-3] [--notebook <nb>] [--json]";;
-      *) args+=("$1"); shift;;
+    -v)
+      invert=1
+      shift
+      ;;
+    -i)
+      ignore=1
+      shift
+      ;;
+    -l)
+      listonly=1
+      shift
+      ;;
+    -m | --method)
+      method="${2:?}"
+      shift 2
+      ;;
+    -n | --notebook)
+      nb="${2:?}"
+      shift 2
+      ;;
+    -s | --page-size)
+      pagesize="${2:?}"
+      shift 2
+      ;;
+    --content)
+      content=1
+      shift
+      ;;
+    --json)
+      json=1
+      shift
+      ;;
+    -h | --help)
+      sy_usage grep
+      return 0
+      ;;
+    -*) sy_die 2 "grep: 未知参数 '$1'" "用法: siyuan grep <pattern> [-v] [-i] [-l] [-m 0-3] [--notebook <nb>] [--json]" ;;
+    *)
+      args+=("$1")
+      shift
+      ;;
     esac
   done
   [[ -n "${args[0]:-}" ]] || sy_die 2 "grep: 缺少 pattern" "用法: siyuan grep <pattern> [...] (管道输入时按行过滤, 终端时内容检索, --content 强制内容检索)"
@@ -275,11 +371,23 @@ cmd_which() {
   local args=()
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      --json) json=1; shift;;
-      -v) verbose=1; shift;;
-      -h|--help) sy_usage which; return 0;;
-      -*) sy_die 2 "which: 未知参数 '$1'" "用法: siyuan which <doc-id|标题|/路径> [-v] [--json]";;
-      *) args+=("$1"); shift;;
+    --json)
+      json=1
+      shift
+      ;;
+    -v)
+      verbose=1
+      shift
+      ;;
+    -h | --help)
+      sy_usage which
+      return 0
+      ;;
+    -*) sy_die 2 "which: 未知参数 '$1'" "用法: siyuan which <doc-id|标题|/路径> [-v] [--json]" ;;
+    *)
+      args+=("$1")
+      shift
+      ;;
     esac
   done
   [[ -n "${args[0]:-}" ]] || sy_die 2 "which: 缺少文档引用" "用法: siyuan which <doc-id|标题|/完整路径> [-v] [--json]"
@@ -311,10 +419,19 @@ cmd_stat() {
   local args=()
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      --json) json=1; shift;;
-      -h|--help) sy_usage stat; return 0;;
-      -*) sy_die 2 "stat: 未知参数 '$1'" "用法: siyuan stat <doc-id|标题|/路径> [--json]";;
-      *) args+=("$1"); shift;;
+    --json)
+      json=1
+      shift
+      ;;
+    -h | --help)
+      sy_usage stat
+      return 0
+      ;;
+    -*) sy_die 2 "stat: 未知参数 '$1'" "用法: siyuan stat <doc-id|标题|/路径> [--json]" ;;
+    *)
+      args+=("$1")
+      shift
+      ;;
     esac
   done
   [[ -n "${args[0]:-}" ]] || sy_die 2 "stat: 缺少文档参数" "用法: siyuan stat <doc-id|标题|/路径> [--json]"

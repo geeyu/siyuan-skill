@@ -134,6 +134,39 @@ switch (cmd) {
     } catch (e) { process.exit(2); }
     break;
   }
+  case 'md-table': {
+    // JSON 数组 → markdown 表格; 参数 "显示名:字段名" 或 "字段名"
+    const cols = args.map((a) => {
+      const i = a.indexOf(':');
+      return i > 0 ? { label: a.slice(0, i), field: a.slice(i + 1) } : { label: a, field: a };
+    });
+    const rows = parse();
+    if (!rows.length) { console.log('(空)'); break; }
+    const esc = (v) => String(v ?? '').replace(/\|/g, '\\|').replace(/\n/g, ' ');
+    console.log('| ' + cols.map((c) => c.label).join(' | ') + ' |');
+    console.log('|' + cols.map(() => ' --- ').join('|') + '|');
+    for (const r of rows) {
+      console.log('| ' + cols.map((c) => esc(r[c.field])).join(' | ') + ' |');
+    }
+    break;
+  }
+  case 'md-keyval': {
+    // document get JSON → markdown 两列表格 (字段 | 值)
+    const d = parse();
+    const ial = d.ial || {};
+    const esc = (v) => String(v ?? '').replace(/\|/g, '\\|').replace(/\n/g, ' ');
+    const lines = [];
+    for (const k of ['id', 'box', 'hPath', 'path', 'parentID', 'rootID']) lines.push([k, d[k] ?? '']);
+    lines.push(['title', ial.title ?? '']);
+    lines.push(['content', d.content ?? '']);
+    for (const k of ['icon', 'updated']) if (ial[k]) lines.push([k, ial[k]]);
+    if (d.name) lines.push(['name', d.name]);
+    if (d.alias) lines.push(['alias', d.alias]);
+    console.log('| 字段 | 值 |');
+    console.log('| --- | --- |');
+    for (const [k, v] of lines) console.log('| ' + k + ' | ' + esc(v) + ' |');
+    break;
+  }
   case 'meta': {
     const d = parse();
     console.log(d.length ? d[0].hpath + '\t' + d[0].box : '\t');
