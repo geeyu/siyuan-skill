@@ -114,6 +114,8 @@ siyuan sql "SELECT id,name FROM blocks WHERE type='d' LIMIT 5" | siyuan grep 调
 > 通过 `siyuan raw <cmd>` 调用, 建议加 `-f json` 拿结构化输出; 不确定参数时 `siyuan raw-help <cmd>`。
 > 封装层 (`siyuan <cmd>`) 覆盖高频操作, 底层命令是 kernel 完整能力, 封装层未覆盖时走 raw。
 
+封装命令支持三种输出模式 (互斥): 默认文本 (行式可管道) / `--json` (稳定字段) / `--markdown` (表格/列表/确认块, stdout 只含 markdown 可直接重定向 `.md` 或粘贴进思源)。`raw` 为原样透传, `--markdown` 无转换效果。
+
 ---
 
 ### notebook — 笔记本

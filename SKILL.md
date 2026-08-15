@@ -22,11 +22,23 @@ description: >
 ~/.pi/skills/siyuan/bin/siyuan <command> [args]
 ```
 
-**shell 风格命令集** (像 Linux 命令一样操作思源笔记): 默认人类可读文本 (行式可管道组合), `--json` 输出稳定字段 (agent 用), 写入操作返回 doc/block id。工作区 `/Users/geeyu/space/siyuan` (可被 `SIYUAN_WORKSPACE` 覆盖)。
+shell 风格命令集 (类似 Linux 命令操作思源笔记): 默认人类可读文本 (行式可管道组合),
+`--json` 输出稳定字段 (agent 用), `--markdown` 输出笔记可直接用的 markdown
+(表格/列表/确认块, stdout 只含 markdown 可重定向到 .md, 与 --json 互斥),
+写入操作返回 doc/block id。工作区 `/Users/geeyu/space/siyuan` (可被 `SIYUAN_WORKSPACE` 覆盖)。
+
+**输出模式** (全部命令三选一): 默认文本 | `--json` | `--markdown`。
+
+```bash
+siyuan ls 工作 --markdown > 目录.md                      # 文档列表存成 markdown 表格
+siyuan sql "SELECT id, hpath FROM blocks LIMIT 5" --markdown   # SQL 结果存成表格
+siyuan tree <doc> --markdown                            # 标题树 → 嵌套列表 (可粘贴进思源)
+```
 
 ## 常用命令速查
 
-### 查询 (shell 风格, 输出行式可管道组合)
+### 读取 (查询类, shell 风格)
+> 全部查询命令支持 `--json` (稳定字段) / `--markdown` (表格/列表, 直接粘贴进笔记或重定向 `.md`), 两模式互斥。
 | 命令 | 作用 |
 |------|------|
 | `ls [笔记本] [路径] [-l]` | 列笔记本/文档 (笔记本可传中文名, 路径支持 /hpath; 无参列笔记本) |
@@ -46,6 +58,7 @@ description: >
 > 旧命令名 `notebooks/nb/list/read/get/outline/search/create/bl/rm` 保留为别名 (完整命令总表见 [references/commands.md](references/commands.md))。
 
 ### 写入/编辑
+> 支持 `--markdown` (写入后返回确认块: 文档 id + 标题 + 链接, 可直接粘贴进思源) / `--json` (稳定字段 {id,title,link,action})。
 | 命令 | 作用 |
 |------|------|
 | `touch --notebook <nb> --title <t> [--parent <pid> \| --path <hpath>] [--file\|stdin]` | 建文档 (默认笔记本根; createDocWithMd 三步语义无中间块残留), 返回 id |
@@ -109,6 +122,7 @@ siyuan raw repo diff --left <id> --right <id>       # 对比两个数据快照
 5. **mv/cp 同/跨笔记本都适用**: `mv <doc> --to <父id>` 自动取父文档所在笔记本, 跨库无需额外参数; 底层 `document move` 只能跨笔记本, 封装层自动处理。
 6. **不知道参数时**: `siyuan raw-help <command>` 查帮助, 不要猜。
 7. **退出码**: 0=成功 1=业务错误 2=用法错误 3=配置错误 124=超时; 内核调用默认 60 秒超时 (`SIYUAN_TIMEOUT` 可调)。`diff` 例外: 0=相同 1=有差异 (同系统 diff)。
+8. **--markdown 模式**: stdout 只含 markdown (可直接重定向), 错误/候选提示仍走 stderr; `--json` 与 `--markdown` 互斥 (同时给报用法错误)。
 
 > 详细约定与源码依据: 见 [references/conventions.md](references/conventions.md)。
 
@@ -195,6 +209,18 @@ siyuan find 调课 | siyuan grep 供应链           # 标题过滤
 NEW_PARENT=$(siyuan which /调场)
 siyuan move <doc-id> --parent-id "$NEW_PARENT"
 ```
+
+### 5. 输出 markdown 供笔记/文件使用
+```bash
+# 文档目录存成 markdown 表格 → 可直接作为笔记内容
+siyuan ls 工作 --markdown > 目录.md
+# SQL 结果存成表格 (含表头分隔行)
+siyuan sql "SELECT id, hpath FROM blocks WHERE type='d' LIMIT 10" --markdown
+# 写入命令返回确认块 (文档 id + 标题 + 链接)
+siyuan write --notebook 工作 --title "周报" --parent-id "$PARENT" --markdown
+# stdout 只含 markdown, 错误走 stderr; --markdown 与 --json 互斥
+```
+
 
 ### 6. 录入排查记录到数据库
 见 [references/database.md](references/database.md) 的「完整录入示例」。

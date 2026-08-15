@@ -44,6 +44,23 @@ echo 'alias siyuan=~/.pi/skills/siyuan/bin/siyuan' >> ~/.zshrc
 
 依赖: `bash 3.2+` / `node 18+` (PATH、fnm、brew 自动兜底定位)。
 
+## 输出模式
+
+全部命令三种输出模式 (三选一, `--json` 与 `--markdown` 互斥):
+
+| 模式 | 说明 | 用途 |
+|------|------|------|
+| 默认 | 人类可读文本, 行式可管道组合 | 终端/管道 |
+| `--json` | 稳定字段 JSON (可被 `SIYUAN_FORMAT=json` 全局默认开启) | agent 解析 |
+| `--markdown` | 表格/嵌套列表/确认块; **stdout 只含 markdown**, 可直接重定向 `.md` 或粘贴进思源, 错误仍走 stderr | 笔记内容/文件 |
+
+```bash
+siyuan ls 工作 --markdown > 目录.md                          # 文档列表 → markdown 表格
+siyuan sql "SELECT id, hpath FROM blocks LIMIT 5" --markdown  # SQL → 表格 (含表头分隔行)
+siyuan tree <doc> --markdown                                 # 标题树 → 嵌套无序列表
+siyuan write --notebook 工作 --title "T" --parent-id <pid> --markdown  # 确认块 (id+标题+链接)
+```
+
 ## 常用命令
 
 ```bash
@@ -67,6 +84,7 @@ siyuan write --notebook 工作 --title "T" --parent-id <pid>   # 建文档
 siyuan ls 工作 | siyuan grep 调课        # 过滤文档列表
 siyuan cat $(siyuan which /工作/调课)    # 定位并读文档
 siyuan grep --content 调课 -l | head -5  # 内容命中前 5 篇文档
+siyuan ls 工作 --markdown | siyuan grep 调课 --markdown  # markdown 表格行过滤
 ```
 
 ## 退出码契约
@@ -79,7 +97,7 @@ siyuan grep --content 调课 -l | head -5  # 内容命中前 5 篇文档
 | 3 | 配置错误 (内核/工作区/node 缺失) |
 | 124 | 内核调用超时 |
 
-错误写 stderr, 格式 `siyuan <命令>: <原因>` + 建议行。所有查询命令支持 `--json` 输出稳定字段。
+错误写 stderr, 格式 `siyuan <命令>: <原因>` + 建议行。查询命令支持 `--json` / `--markdown` 输出 (互斥), 写命令支持 `--markdown` 确认块 / `--json` 稳定字段。
 
 ## 思源源码
 
