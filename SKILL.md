@@ -42,7 +42,7 @@ description: >
 ### 写入/编辑
 | 命令 | 作用 |
 |------|------|
-| `write --notebook <nb> --title <t> [--parent-id <pid>] [--file\|stdin]` | 建文档 (推荐 --parent-id), 返回 id |
+| `write --notebook <nb> --title <t> [--parent-id <pid> \| --path <hpath>] [--file\|stdin]` | 建文档 (推荐 --parent-id), 返回 id |
 | `append <doc-id> [--data\|--file\|stdin]` | 追加到文档末尾 |
 | `insert-block --previous <bid>\|--parent <doc-id> [--data]` | 插入块 |
 | `update-block <block-id> [--data\|--file]` | 替换块内容 |
@@ -59,7 +59,7 @@ description: >
 | `raw <args...>` | 透传给 SiYuan-Kernel (自带 -w) |
 | `raw-help <subcommand...>` | 查底层命令帮助, 例 `raw-help block insert` |
 
-**完整的底层命令参考** (notebook/document/block/attr/bookmark/tag/dailynote/file/export/import/asset/history/inbox/template/repo/sync 等 18 类命令): 见 [references/commands.md](references/commands.md)。
+**完整的底层命令参考** (24 类命令: notebook/document/block/outline/ref/sql/search/database/attr/bookmark/tag/dailynote/file/export/import/asset/history/inbox/template/repo/sync/system/workspace/serve): 见 [references/commands.md](references/commands.md)。
 
 常用底层命令速查:
 ```bash
@@ -153,7 +153,7 @@ siyuan move <doc-id> --parent-id "$NEW_PARENT"
 
 ## 工作区信息
 
-- 内核: `/Applications/SiYuan.app/Contents/Resources/kernel/SiYuan-Kernel` (v3.7.0)
+- 内核: `/Applications/SiYuan.app/Contents/Resources/kernel/SiYuan-Kernel` (v3.8.0)
 - 工作区: `/Users/geeyu/space/siyuan`
 - 笔记本: 工作 / 学习 / 生活
 - 思源源码 (查行为依据): `/Users/geeyu/space/code/github/siyuan`

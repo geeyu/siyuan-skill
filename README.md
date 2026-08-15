@@ -14,12 +14,12 @@ echo 'alias siyuan=~/.pi/skills/siyuan/bin/siyuan' >> ~/.zshrc
 
 遵循 [Agent Skills 标准](https://agentskills.io/specification) 的 progressive disclosure：
 
-- **SKILL.md** (入口, ~160 行): 常用命令速查 + 核心约定 + 典型用法。pi 启动时只加载 frontmatter 的 description, 匹配任务时才 read 全文。
+- **SKILL.md** (入口, ~170 行): 常用命令速查 + 核心约定 + 典型用法。pi 启动时只加载 frontmatter 的 description, 匹配任务时才 read 全文。
 - **references/** (按需加载):
-  - `commands.md` — 完整底层命令参考 (18 类命令: notebook/document/block/attr/bookmark/tag/dailynote/file/export/import/asset/history/inbox/template/repo/sync/system/workspace)
+  - `commands.md` — 完整底层命令参考 (24 类命令: notebook/document/block/outline/ref/sql/search/database/attr/bookmark/tag/dailynote/file/export/import/asset/history/inbox/template/repo/sync/system/workspace/serve)
   - `database.md` — 数据库(AV) 完整规范 (值结构对照表、录入流程、坑点根因)
   - `conventions.md` — 详细约定与源码依据
-- **scripts/verify_av.py** — 数据库字段值验证脚本
+- **scripts/av_ops.js** — 数据库(AV) 操作工具库 (搜索/验证/导出, 自动处理引号与嵌套结构)
 - **bin/siyuan** — CLI 封装层 (bash)
 
 这样"写笔记"等简单任务只加载精简 SKILL.md，操作数据库时才加载完整规范，节省 context。

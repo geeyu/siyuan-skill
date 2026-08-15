@@ -28,7 +28,7 @@
 | `raw database search "<关键词>"` | 按名称搜索数据库, 拿 avID |
 | `raw database get --av <avID>` | 获取数据库完整内容 (结构+数据), **验证写入用这个** |
 | `raw database keys --av <avID>` | 列出所有字段 (列) 及 keyID |
-| `raw database render --av <avID> [-p 页码 -s 每页]` | 渲染分页数据 |
+| `raw database render --av <avID> [--query <kw>] [--view <id>]` | 渲染视图数据 |
 | `raw database item add --av <avID> --block <blockID> --content "标题"` | 新增一行 (绑定文档块) |
 | `raw database item add --av <avID> --detached --content "标题"` | 新增游离行 (不绑文档块) |
 | `raw database item update --av <avID> --key <keyID> --item <itemID> --value '<json>'` | 更新某个单元格 |
@@ -91,7 +91,7 @@
 3. **加一行** 绑定文档: `siyuan raw database item add --av <avID> --block <doc-id> --content "标题" -f json`
    - 返回 ok 但不返回 itemID, 用 `database get` 反查: block 字段的 `values[].blockID` 即行 ID
 4. **逐字段填值** 用上表正确结构: `siyuan raw database item update --av <avID> --key <keyID> --item <itemID> --value '<json>'`
-5. **验证**: `siyuan raw database get --av <avID> -f json | python3 ../scripts/verify_av.py` (ok 不代表成功)
+5. **验证**: `node scripts/av_ops.js verify <avID>` (ok 不代表成功)
 
 ## ⚠️ value 含双引号时的传参陷阱 (关键经验)
 

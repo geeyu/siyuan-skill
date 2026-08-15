@@ -1,6 +1,6 @@
 # SiYuan-Kernel 完整命令参考
 
-> 数据来源: 源码 `kernel/cli/cmd/*.go` (SiYuan-Kernel v3.7.0)
+> 数据来源: 源码 `kernel/cli/cmd/*.go` (SiYuan-Kernel v3.8.0, 已用 `SiYuan-Kernel --help` 逐条核对)
 > 通过 `siyuan raw <cmd>` 调用, 建议加 `-f json` 拿结构化输出
 > 不确定参数时: `siyuan raw-help <cmd>`
 
@@ -124,11 +124,11 @@
 
 | 命令 | 作用 |
 |------|------|
-| `raw export md --id <id>` | 导出 Markdown (read 封装用的底层) |
+| `raw export md --id <id> [--output <file>]` | 导出 Markdown (read 封装用的底层, 默认输出到 stdout) |
 | `raw export html --id <id>` | 导出 HTML |
 | `raw export preview --id <id>` | 导出预览 HTML |
 | `raw export docx --id <id> --output <file>` | 导出 Word |
-| `raw export sy --id <id> [--output <dir>]` | 导出 .sy.zip |
+| `raw export sy --id <id> [--output <file>]` | 导出 .sy.zip |
 | `raw export md-zip --id <id> [--output <file>]` | 导出 Markdown zip |
 | `raw export data [--output <file>]` | 导出完整工作区备份 |
 | `raw import md --file <path> --notebook <id>` | 导入 Markdown 文件/目录 |
@@ -158,7 +158,7 @@
 
 | 命令 | 作用 |
 |------|------|
-| `raw inbox list [--page]` | 列云端剪藏 |
+| `raw inbox list [-p <page>]` | 列云端剪藏 |
 | `raw inbox get --id <id>` | 取剪藏完整 markdown |
 | `raw inbox convert --ids id1,id2 --notebook <id> [--path </hp>] [--remove-after]` | 转为本地文档 |
 
