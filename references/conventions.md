@@ -93,18 +93,19 @@ parent=$(siyuan sql "SELECT parent_id FROM blocks WHERE id='$prev'" ...)
 ## 11. 数据库 item add 不返回 itemID
 
 add 成功只返回 `ok`/`item added`, itemID (行 ID) 每次新生成且**不等于传入的 blockID**。
-需用 `database get` 反查 block 类型字段的 `values[].blockID` (不是 `block.id`, 后者是绑定的文档块)。
+3.8.0 起 (B2) 需用 `database render` 反查 `view.rows[].id` (block 单元格的 `value.block.id` 是绑定的文档块 ID); `database get` 已不再返回行数据。
+**推荐直接用 `siyuan av add`** (自动反查 + 写后验证), 底层 raw 行为见上。
 CLI 和 MCP 行为一致。
 源码: `kernel/model/attribute_view.go` AddAttributeViewBlock 第 3685 行 `srcItemID = ast.NewNodeID()`。
 
 ## 12. 字段不能重命名, 只能删后重建
 
 思源 CLI 没有 `key rename` 命令, 字段创建后名称固定。要改名只能 `key remove` 删除后 `key add` 新建, **会丢失该字段所有行的值**。
-重建排查记录库字段时的正确流程: 先 `database get` 导出全量数据备份 → 删旧字段 → 建新字段 → 用 av_ops.js 按新字段名回填。
+重建排查记录库字段时的正确流程: 先 `siyuan av export <avID>` 导出全量数据备份 → 删旧字段 → 建新字段 → 用 `siyuan av add/update` 按新字段名回填。
 
 ## 13. value 含双引号时用临时文件传递 (shell 脚本)
 
 `--value '<json>'` 单引号包裹时, JSON 内双引号与 shell 引号嵌套冲突, 导致 value 被截断**静默不落库** (CLI 仍返回 ok)。
 根因: shell 对 `'..."..."...'` 的处理把 JSON 破坏, 内核反序列化时子对象为 nil 跳过。
-可靠做法: `echo -n "$VAL" > /tmp/v.txt` 再 `--value "$(cat /tmp/v.txt)"`, 或直接用 `scripts/av_ops.js` (JS 里无 shell 引号问题)。
-这是本次重建排查记录库踩到的核心坑, 已封装进 av_ops.js。
+可靠做法: `echo -n "$VAL" > /tmp/v.txt` 再 `--value "$(cat /tmp/v.txt)"`, 或直接用 `siyuan av add/update --values @file/stdin` (自动处理引号与嵌套)。
+这是本次重建排查记录库踩到的核心坑, 已封装进 av 命令组 (旧 av_ops.js 同样封装, 保留供旧脚本引用)。

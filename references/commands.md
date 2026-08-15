@@ -81,7 +81,23 @@
 
 ## database — 数据库 (属性视图)
 
-详见 [database.md](database.md)。
+**封装命令组 `siyuan av ...`** (适配 3.8.0 B1/B2, 推荐):
+
+| 命令 | 作用 |
+|------|------|
+| `av list [--json]` | 列出全部数据库 (avID+名称+路径) |
+| `av keys <avID> [--json]` | 列字段 (name/type/keyID; B1: 3.8 keys 为对象包装) |
+| `av rows <avID> [--limit N] [-H] [--json]` | 列行数据 (B2: 走 render; TSV 可管道) |
+| `av get <avID> --row <rowID> [--json]` | 单行详情 |
+| `av add <avID> --values '<JSON>' [--content <标题>] [--block <doc-id>]` | 加行 (值自动嵌套, 自动反查 itemID, 写后验证) |
+| `av update <avID> --row <rowID> --values '<JSON>'` | 改行 (写后 render 验证) |
+| `av remove <avID> --row <rowID>` | 删行 (删后验证) |
+| `av verify <avID> [--json]` | 逐行打印实际值 (验证权威入口) |
+| `av export <avID>` | 导出全量 JSON (备份) |
+
+完整规范 (字段类型/值结构/录入流程/排查记录库设计): 见 [database.md](database.md)。
+
+底层 `raw database ...` (透传, 高级用): search / get (3.8 起仅结构元数据) / keys / render (行数据唯一来源) / item add|update|remove / key add|remove / unused / clean。
 
 ## attr / bookmark / tag — 属性、书签、标签
 

@@ -33,6 +33,7 @@ source "$BIN_DIR/lib/cmd-query.sh"
 source "$BIN_DIR/lib/cmd-misc.sh"
 source "$BIN_DIR/lib/cmd-write.sh"
 source "$BIN_DIR/lib/cmd-edit.sh"
+source "$BIN_DIR/lib/cmd-av.sh"
 
 sy_register ls              cmd_ls            list notebooks nb
 sy_register tree            cmd_tree          outline
@@ -61,6 +62,7 @@ sy_register cp              cmd_cp
 sy_register rm              cmd_rm
 sy_register diff            cmd_diff
 sy_register rename          cmd_rename
+sy_register av               cmd_av
 sy_register raw             cmd_raw
 sy_register raw-help        cmd_raw_help
 sy_register help            cmd_help
@@ -111,6 +113,17 @@ siyuan — 思源笔记命令行 (基于 SiYuan-Kernel 3.8+, shell 风格)
   delete-block <block-id>              删除块
   move <doc-id> --parent-id <pid>      移动文档
   remove <doc-id>                      删除文档
+
+数据库 (属性视图, 适配 3.8.0):
+  av list [--json]                   列出全部数据库 (名称+avID)
+  av keys <avID> [--json]            列字段
+  av rows <avID> [--limit N] [-H] [--json]  列行数据 (走 render)
+  av get <avID> --row <rowID> [--json]  单行详情
+  av add <avID> --values '<JSON>' [--content <标题>] [--block <doc-id>]  加行
+  av update <avID> --row <rowID> --values '<JSON>'  改行 (写后验证)
+  av remove <avID> --row <rowID>     删行
+  av verify <avID> [--json]          逐行打印实际值 (验证权威入口)
+  av export <avID>                   导出全量 JSON (备份)
 
 底层:
   raw <args...>                        透传 SiYuan-Kernel (自带 -w, 默认 table)
@@ -232,10 +245,12 @@ EOF
 用法: siyuan rename <doc-id|标题|/路径> <新标题>
   重命名文档: IAL title (文档名) + H1 子块文本同步, 避免 title/H1 不一致
   输出: 文档 id
-EOF
-;;
-    children|backlinks|write|append|insert-block|update-block|delete-block|replace-doc|move|remove|raw|raw-help)
-      usage >&2
+    children|backlinks|write|append|insert-block|update-block|delete-block|replace-doc|move|remove|av|raw|raw-help)
+      if [[ -n "${1:-}" && "$1" == av* ]]; then
+        av_usage "${1#av }"
+      else
+        usage >&2
+      fi
       ;;
     *) usage >&2;;
   esac
