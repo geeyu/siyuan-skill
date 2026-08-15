@@ -100,7 +100,7 @@ siyuan — 思源笔记命令行 (基于 SiYuan-Kernel 3.8+, shell 风格)
   backlinks <block-id> [--keyword <kw>] [--json|--markdown]  反链
 
 写入/编辑 (shell 风格, 每次写操作返回目标 id; --markdown 返回确认块: 文档 id+标题+链接; --json 出稳定字段):
-  touch --notebook <nb> --title <t> [--parent <pid>|--path <hpath>] [--file|stdin]
+  touch --notebook <nb> --title <t> [--parent <pid>|--path <hpath>] [--data <md>|--file|stdin]
                                       建文档 (默认笔记本根; createDocWithMd 三步语义, 无中间块残留)
   edit <doc> (--append|--prepend|--update <block-id>|--replace) <text> [--file|stdin]
                                       统一编辑入口: 追加/开头插入/改块/整篇替换
@@ -111,7 +111,7 @@ siyuan — 思源笔记命令行 (基于 SiYuan-Kernel 3.8+, shell 风格)
   rename <doc> <新标题>                重命名 (IAL title + H1 同步, 输出文档 id)
 
 底层写入 (id 级):
-  write --notebook <nb> --title <t> [--parent-id <pid>|--path <hpath>] [--file|stdin]
+  write --notebook <nb> --title <t> [--parent-id <pid>|--path <hpath>] [--data <md>|--file|stdin]
                                       建文档 (推荐 --parent-id), 返回新文档 id
   append <doc-id> [--data|--file|stdin]   追加到文档末尾
   insert-block --previous <bid>|--parent <doc-id> [--data|--file|stdin]  插入块
@@ -209,7 +209,7 @@ EOF
 EOF
 ;;
     touch)    cat <<'EOF'
-用法: siyuan touch --notebook <nb> --title <t> [--parent <pid> | --path <hpath>] [--file <md>|stdin]
+用法: siyuan touch --notebook <nb> --title <t> [--parent <pid> | --path <hpath>] [--data <md>|--file <md>|stdin]
   新建文档 (默认笔记本根目录); 内容可选 (空文档 = 空文件语义)
   --parent <pid>  建到该父文档下 (父文档 id/标题/路径)
   --path <hpath>  按人类可读路径建 (如 /供应链); HTTP 不可用时需该路径已存在

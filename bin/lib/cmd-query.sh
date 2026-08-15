@@ -74,8 +74,29 @@ cmd_ls() {
     # internal path 形如 /20241206xxxx-abc.sy...; 其余按人类可读 hpath
     if [[ "$pth" =~ ^/[0-9]{14}-[a-z0-9]{6,8}(/|$) ]]; then
       dargs+=(--path "$pth")
-    else
+    elif [[ "$pth" == /* ]]; then
+      # hpath: 先 SQL 定位, 避免内核两处误导行为 (不存在/叶子文档会静默列根或报错)
+      local esc="${pth//\'/\'\'}"
+      local cnt
+      cnt="$(sy_json ls sql "SELECT count(*) AS cnt FROM blocks WHERE hpath='$esc' AND type='d'" |
+        "$SY_NODE" "$SY_LIB_DIR/fmt.js" first-field cnt)" || return $?
+      if [[ -z "$cnt" || "$cnt" == "0" ]]; then
+        sy_die 1 "ls: 找不到路径 '$pth'" "用 'siyuan find' 搜相近文档, 或确认路径以 / 开头且完整 (如 /工作/调课)"
+      fi
+      local sub
+      sub="$(sy_json ls sql "SELECT count(*) AS cnt FROM blocks WHERE hpath LIKE '${esc}/%' AND type='d'" |
+        "$SY_NODE" "$SY_LIB_DIR/fmt.js" first-field cnt)" || return $?
+      if [[ "$sub" == "0" ]]; then
+        # 叶子文档: 无子文档, 空列表
+        case "$SY_MODE" in
+        json) echo '[]' ;;
+        *) : ;;  # 文本/markdown 无输出
+        esac
+        return 0
+      fi
       dargs+=(--hpath "$pth")
+    else
+      sy_die 2 "ls: 路径参数需以 / 开头 ('$pth')" "路径是完整人类可读路径, 如 'siyuan ls 工作 /工作/调课'; 不带 / 会被误当作笔记本名"
     fi
   fi
   out="$(sy_json ls "${dargs[@]}")" || return $?

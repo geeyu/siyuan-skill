@@ -65,6 +65,12 @@
 'use strict';
 const fs = require('fs');
 
+// 管道早关 (head/管道组合) 时静默退出, 不打印 EPIPE 堆栈
+process.stdout.on('error', (e) => {
+  if (e && e.code === 'EPIPE') process.exit(0);
+  throw e;
+});
+
 const stdin = fs.readFileSync(0, 'utf8');
 const cmd = process.argv[2];
 const args = process.argv.slice(3);

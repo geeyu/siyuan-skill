@@ -77,7 +77,7 @@ siyuan sql "SELECT ..."                 # SQL 查询
 siyuan write --notebook 工作 --title "T" --parent-id <pid>   # 建文档
 ```
 
-旧命令名 `notebooks/nb/list/read/get/outline/search/create/bl/rm` 保留为别名; 计划命名 (touch/edit/mv/cp/diff/rename/av) 与实现命令的对应关系见 SKILL.md 与 references/commands.md。
+旧命令名 `notebooks/nb/list/read/get/outline/search/create/bl/rm` 保留为别名; 计划命名 `touch/edit/mv/cp/rm/diff/rename/av` 均已直接实现 (见上方速查)。
 
 组合 (管道):
 ```bash

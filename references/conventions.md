@@ -22,7 +22,7 @@
 
 ## 3. markdown 内容传入方式
 
-`write`/`append`/`insert-block`/`update-block`/`replace-doc` 统一支持三种:
+`write`/`touch`/`append`/`insert-block`/`update-block`/`replace-doc` 统一支持三种:
 - `--data <字符串>`
 - `--file <文件路径>`
 - 管道 stdin (`echo '...' | siyuan write ...`)
@@ -43,8 +43,8 @@
 `raw document rename` 只改 IAL `title` 属性, 不改文档内 H1 文本。
 源码: `kernel/model/file.go` 的 `RenameDoc`, 仅 `tree.Root.SetIALAttr("title", title)`, 不动 H1 块。
 
-默认建文档时 IAL title 与首个 H1 一致, 所以像「跟随 H1」, 但 rename 后两者会不一致。
-要 H1 也同步改名, 需额外:
+默认建文档时 IAL title 与首个 H1 一致, 所以像「跟随 H1」, 但 raw rename 后两者会不一致。
+**封装层 `siyuan rename <doc> <新标题>` 已自动同步**: 先 `document rename` 改 IAL, 再 `block update` 把文档第一个 H1 块文本改成新标题 (同步后两者一致)。要单改 H1 文本用:
 ```bash
 # 先定位 H1 块 id (sql 文本输出为 TSV 行, 单列查询取首行即可)
 H1=$(siyuan sql "SELECT id FROM blocks WHERE root_id='$DOC' AND type='h' AND subtype='h1' LIMIT 1" | head -1)

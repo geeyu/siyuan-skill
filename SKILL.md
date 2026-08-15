@@ -61,14 +61,14 @@ siyuan tree <doc> --markdown                            # 标题树 → 嵌套�
 > 支持 `--markdown` (写入后返回确认块: 文档 id + 标题 + 链接, 可直接粘贴进思源) / `--json` (稳定字段 {id,title,link,action})。
 | 命令 | 作用 |
 |------|------|
-| `touch --notebook <nb> --title <t> [--parent <pid> \| --path <hpath>] [--file\|stdin]` | 建文档 (默认笔记本根; createDocWithMd 三步语义无中间块残留), 返回 id |
+| `touch --notebook <nb> --title <t> [--parent <pid> \| --path <hpath>] [--data\|--file\|stdin]` | 建文档 (默认笔记本根; createDocWithMd 三步语义无中间块残留), 返回 id |
 | `edit <doc> (--append\|--prepend\|--update <块id>\|--replace) <text> [--file\|stdin]` | 统一编辑入口: 追加/开头插入/改块/整篇替换, 返回目标 id |
 | `mv <doc> --to <父id> [--notebook <nb>]` | 移动文档 (同/跨笔记本), 返回文档 id |
 | `cp <doc> [--to <父id>]` | 复制文档 (duplicate), 返回新副本 id |
 | `rm <doc>` | 删文档 (接受 id/标题/路径引用), 返回文档 id |
 | `diff <docA> <docB> [diff 参数...]` | 对比两文档 markdown (统一 diff 格式; 退出码 0=同 1=异) |
 | `rename <doc> <新标题>` | 重命名 (IAL title + H1 同步, 避免不一致), 返回文档 id |
-| `write --notebook <nb> --title <t> [--parent-id <pid> \| --path <hpath>] [--file\|stdin]` | 建文档 (推荐 --parent-id), 返回 id |
+| `write --notebook <nb> --title <t> [--parent-id <pid> \| --path <hpath>] [--data\|--file\|stdin]` | 建文档 (推荐 --parent-id), 返回 id |
 | `append <doc-id> [--data\|--file\|stdin]` | 追加到文档末尾 |
 | `insert-block --previous <bid>\|--parent <doc-id> [--data\|--file\|stdin]` | 插入块 |
 | `update-block <block-id> [--data\|--file\|stdin]` | 替换块内容 |
@@ -77,7 +77,7 @@ siyuan tree <doc> --markdown                            # 标题树 → 嵌套�
 | `move <doc-id> --parent-id <pid>` | 移动文档到另一父文档下 |
 | `remove <doc-id>` | 删文档 (id 级) |
 
-内容传入统一支持 `--data <字符串>` / `--file <文件>` / 管道 stdin; 每次写操作返回目标 id (可 `$(siyuan touch ...)` 直接取用)。
+内容传入统一支持 `--data <字符串>` / `--file <文件>` / 管道 stdin; 编辑命令组 (touch/edit/mv/cp/rm/rename) 每次返回目标 id (可 `$(siyuan touch ...)` 直接取用), 底层写入命令 (append/insert-block/update-block/delete-block/replace-doc/move/remove) 返回 `ok`。
 
 ### 底层透传 (封装层未覆盖的完整能力)
 | 命令 | 作用 |
@@ -100,18 +100,18 @@ siyuan raw repo diff --left <id> --right <id>       # 对比两个数据快照
 
 ### 计划命名 ↔ 实现命令对照
 
-重构计划的 Linux 风格命名与最终实现命令的对应关系 (计划名未直接实现, 功能由下表命令提供):
+重构计划的 Linux 风格命名已全部直接实现 (见上文命令速查表):
 
 | 计划名 | 实现命令 | 说明 |
 |------|------|------|
-| `touch` (建空文档) | `write` | 建文档, 内容可留空 |
-| `edit` (编辑) | `append` / `update-block` / `replace-doc` / `insert-block` | 追加 / 改块 / 整体替换 / 插块 |
-| `mv` (移动) | `move` | 移动文档到另一父文档 |
-| `cp` (复制) | `raw document duplicate` | 复制文档 |
-| `rm` (删除) | `remove` (别名 `rm` ✅) | 删除文档 |
-| `diff` (对比) | `cat <docA> > a.md; cat <docB> > b.md; diff a.md b.md` / `raw repo diff` | 文档内容对比 / 快照对比 |
-| `rename` (改名) | `raw document rename` | 只改 IAL title, 不改 H1 |
-| `av` (数据库) | `raw database ...` + `scripts/av_ops.js` | 见 [references/database.md](references/database.md) |
+| `touch` (建空文档) | `touch` ✅ | 建文档, 内容可留空 |
+| `edit` (编辑) | `edit` ✅ | 统一编辑入口: 追加 / 开头插入 / 改块 / 整篇替换 |
+| `mv` (移动) | `mv` ✅ | 移动文档到另一父文档 (同/跨笔记本) |
+| `cp` (复制) | `cp` ✅ | 复制文档 (duplicate) |
+| `rm` (删除) | `rm` ✅ | 删除文档 (接受 id/标题/路径引用) |
+| `diff` (对比) | `diff` ✅ | 对比两文档 markdown (统一 diff 格式) |
+| `rename` (改名) | `rename` ✅ | 改名 (IAL title + H1 同步) |
+| `av` (数据库) | `av list/keys/rows/get/add/update/remove/verify/export` ✅ | 见 [references/database.md](references/database.md) |
 
 ## 核心约定 (高频必读)
 

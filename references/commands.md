@@ -12,18 +12,18 @@
 
 | 命令 (别名) | 用法 | 输出 | 退出码备注 |
 |------|------|------|------|
-| `ls` (`notebooks`/`nb`/`list`) | `ls [笔记本] [路径] [-l] [--json]` | 无参: 笔记本 `id<TAB>name`; 有参: 文档 `id<TAB>name`; `-l` 附 子数/大小/修改时间 | 0 |
-| `tree` (`outline`) | `tree <doc> [-l] [--json]` | 标题树 (按 h 层级缩进); `-l` 附块 id | 0 |
-| `cat` (`read`) | `cat <doc> [--json]` | markdown 源 (走 `export md`) | 0 |
-| `head` | `head <doc> [-n N] [--json]` | 开头 N 行 (默认 10, 内部 cat 截断) | 0 |
-| `tail` | `tail <doc> [-n N] [--json]` | 末尾 N 行 (默认 10) | 0 |
-| `find` (`search`) | `find <关键词> [--notebook <nb>] [-l N] [--json]` | `doc_id<TAB>hPath<TAB>notebook_id` (document search) | 0 |
-| `grep` | `grep <pattern> [-v] [-i] [-l] [-m 0-3] [--notebook <nb>] [-s N] [--content] [--json]` | 见下方「grep 双模式」 | 无匹配退出 1 |
-| `which` | `which <doc-id\|标题\|/路径> [-v] [--json]` | 唯一 doc id; `-v` 附 `id<TAB>hPath<TAB>box` | 0/1 (找不到或多匹配) |
-| `stat` (`get`) | `stat <doc> [--json]` | 文本 `key: value`; `--json` 原始对象 | 0 |
-| `sql` | `sql "<语句>" [-l N] [-H] [--json]` | 文本 TSV 行 (无表头, 可组合); `-H` 加表头 | 0 |
-| `children` | `children <block-id> [--json]` | `id<TAB>type<TAB>content` (内容截 60 字符) | 0 |
-| `backlinks` (`bl`) | `backlinks <block-id> [--keyword <kw>] [--json]` | 递归 `id<TAB>content` 行 | 0 |
+| `ls` (`notebooks`/`nb`/`list`) | `ls [笔记本] [路径] [-l] [--json\|--markdown]` | 无参: 笔记本 `id<TAB>name`; 有参: 文档 `id<TAB>name`; `-l` 附 子数/大小/修改时间 | 0 |
+| `tree` (`outline`) | `tree <doc> [-l] [--json\|--markdown]` | 标题树 (按 h 层级缩进); `-l` 附块 id | 0 |
+| `cat` (`read`) | `cat <doc> [--json\|--markdown]` | markdown 源 (走 `export md`) | 0 |
+| `head` | `head <doc> [-n N] [--json\|--markdown]` | 开头 N 行 (默认 10, 内部 cat 截断) | 0 |
+| `tail` | `tail <doc> [-n N] [--json\|--markdown]` | 末尾 N 行 (默认 10) | 0 |
+| `find` (`search`) | `find <关键词> [--notebook <nb>] [-l N] [--json\|--markdown]` | `doc_id<TAB>hPath<TAB>notebook_id` (document search) | 0 |
+| `grep` | `grep <pattern> [-v] [-i] [-l] [-m 0-3] [--notebook <nb>] [-s N] [--content] [--json\|--markdown]` | 见下方「grep 双模式」 | 无匹配退出 1 |
+| `which` | `which <doc-id\|标题\|/路径> [-v] [--json\|--markdown]` | 唯一 doc id; `-v` 附 `id<TAB>hPath<TAB>box` | 0/1 (找不到或多匹配) |
+| `stat` (`get`) | `stat <doc> [--json\|--markdown]` | 文本 `key: value`; `--json` 原始对象 | 0 |
+| `sql` | `sql "<语句>" [-l N] [-H] [--json\|--markdown]` | 文本 TSV 行 (无表头, 可组合); `-H` 加表头 | 0 |
+| `children` | `children <block-id> [--json\|--markdown]` | `id<TAB>type<TAB>content` (内容截 60 字符) | 0 |
+| `backlinks` (`bl`) | `backlinks <block-id> [--keyword <kw>] [--json\|--markdown]` | 递归 `id<TAB>content` 行 | 0 |
 
 **grep 双模式** (核心):
 - **管道过滤模式** (stdin 非终端且未加 `--content`/`-m`): 按行过滤上游输出, 等价 `grep -E`, 支持 `-v`/`-i`。例: `siyuan ls 工作 | siyuan grep 调课`
@@ -40,18 +40,34 @@ siyuan cat $(siyuan which /工作/调课)       # 定位并读文档 (命令替�
 siyuan sql "SELECT id,name FROM blocks WHERE type='d' LIMIT 5" | siyuan grep 调课   # SQL 结果过滤
 ```
 
-### 写入/编辑 (成功输出 `ok` 或新文档 id)
+### 写入/编辑 (shell 风格)
+
+> 输出模式: 默认文本 (编辑命令组返回目标 id, 底层写入返回 `ok`) | `--json` (稳定字段) | `--markdown` (确认块, 可粘贴进思源)。内容传入统一支持 `--data <字符串>` / `--file <文件>` / 管道 stdin。
+
+**编辑命令组** (shell 风格命名, 均返回目标 id):
+
+| 命令 | 用法 | 输出 | 备注 |
+|------|------|------|------|
+| `touch` | `touch --notebook <nb> --title <t> [--parent <pid> \| --path <hpath>] [--data\|--file\|stdin]` | 新文档 id | 建文档 (内容可空, 空文档=空文件语义); 创建走 createDocWithMd 三步语义, HTTP 不可用自动回退 CLI |
+| `edit` | `edit <doc> (--append\|--prepend\|--update <块id>\|--replace) <text> [--file\|stdin]` | 目标 id (update=块 id, 其余=文档 id) | 统一编辑入口, 内部路由到 append/prepend/update-block/replace-doc |
+| `mv` | `mv <doc> --to <父id> [--notebook <nb>] \| mv <doc> --notebook <nb>` | 被移动文档 id | 同/跨笔记本均走 CLI `document move`; `--to` 自动取父文档所在库 |
+| `cp` | `cp <doc> [--to <父id>]` | 新副本 id | `document duplicate`, 同目录生成 `标题 (Duplicated ...)` 副本; `--to` 复制后移动 |
+| `rm` | `rm <doc-id\|标题\|/路径>` | 被删除文档 id | 引用三种形式均可; CLI 失败降级 HTTP removeDocByID |
+| `diff` | `diff <docA> <docB> [diff 参数...]` | 统一 diff (默认 -u) | 内部 cat + 系统 diff; 退出码同 diff: 0=相同 1=有差异 2=错误 |
+| `rename` | `rename <doc> <新标题>` | 文档 id | IAL title + 第一个 H1 子块同步改, 避免 title/H1 不一致 |
+
+**底层写入** (id 级, 文本模式输出 `ok`):
 
 | 命令 (别名) | 用法 | 输出 | 备注 |
 |------|------|------|------|
-| `write` (`create`) | `write --notebook <nb> --title <t> [--parent-id <pid> \| --path <hpath>] [--file <f>\|stdin]` | 新文档 id | 推荐 `--parent-id` (自动清理中间块) |
+| `write` (`create`) | `write --notebook <nb> --title <t> [--parent-id <pid> \| --path <hpath>] [--data\|--file\|stdin]` | 新文档 id | 推荐 `--parent-id` (自动清理中间块) |
 | `append` | `append <doc-id> [--data <md> \| --file <f> \| stdin]` | `ok` | 追加到文档末尾 |
 | `insert-block` | `insert-block --previous <bid> \| --parent <doc-id> [--data\|--file\|stdin]` | `ok` | `--previous` 自动查 parent |
 | `update-block` | `update-block <block-id> [--data\|--file\|stdin]` | `ok` | 替换块内容 |
 | `replace-doc` | `replace-doc <doc-id> [--data\|--file\|stdin]` | `ok` | 删子块后重写, 保留标题 |
 | `delete-block` | `delete-block <block-id>` | `ok` | 删除块 |
-| `move` | `move <doc-id> --parent-id <pid>` | `ok` | 走 HTTP moveDocs, 同/跨笔记本均可 |
-| `remove` (`rm`) | `remove <doc-id>` | (静默) | CLI 失败降级 HTTP removeDocByID |
+| `move` | `move <doc-id> --parent-id <pid>` | `ok` | 走 HTTP moveDocs (需 App/内核 serve 运行), 同/跨笔记本均可; HTTP 不可用时快速失败并提示 |
+| `remove` | `remove <doc-id>` | (静默) | CLI 失败降级 HTTP removeDocByID |
 
 ### 底层与其他
 
@@ -72,19 +88,19 @@ siyuan sql "SELECT id,name FROM blocks WHERE type='d' LIMIT 5" | siyuan grep 调
 
 ## 三、计划命名 ↔ 实现命令对照
 
-重构计划的 Linux 风格命名未全部直接实现, 功能对应如下:
+重构计划的 Linux 风格命名已全部直接实现:
 
-| 计划名 | 实现 | 说明 |
+| 计划名 | 实现命令 | 说明 |
 |------|------|------|
-| `ls/cat/head/tail/find/grep/tree/which/stat/sql` | 同名 ✅ | 直接实现 |
-| `touch` | `write` | 建文档 (内容可空) |
-| `edit` | `append` / `update-block` / `replace-doc` / `insert-block` | 按编辑粒度选 |
-| `mv` | `move` | 移动文档 |
-| `cp` | `raw document duplicate` | 复制文档 |
-| `rm` | `remove` (别名 `rm`) | 删除文档 |
-| `diff` | `cat` 两篇 + 本地 `diff`; 或 `raw repo diff --left <id> --right <id>` | 文档内容对比 / 快照对比 |
-| `rename` | `raw document rename --id <id> --title <t>` | 只改 IAL title, 不改 H1 |
-| `av` | `raw database ...` + `scripts/av_ops.js` | 属性视图, 见 [database.md](database.md) |
+| `ls/cat/head/tail/find/grep/tree/which/stat/sql` | 同名 ✅ | 查询命令组 |
+| `touch` | `touch` ✅ | 建文档 (内容可空) |
+| `edit` | `edit` ✅ | 统一编辑入口 (append/prepend/update/replace 路由) |
+| `mv` | `mv` ✅ | 移动文档 (同/跨笔记本) |
+| `cp` | `cp` ✅ | 复制文档 |
+| `rm` | `rm` ✅ | 删除文档 (另保留 `remove` 原名) |
+| `diff` | `diff` ✅ | 对比两文档 markdown (统一 diff) |
+| `rename` | `rename` ✅ | 改名 (IAL title + H1 同步) |
+| `av` | `av list/keys/rows/get/add/update/remove/verify/export` ✅ | 属性视图, 见 [database.md](database.md) |
 
 ## 四、退出码契约
 
@@ -96,7 +112,7 @@ siyuan sql "SELECT id,name FROM blocks WHERE type='d' LIMIT 5" | siyuan grep 调
 | 3 | 配置错误 | 内核二进制/工作区/node 缺失 |
 | 124 | 内核调用超时 | 内核 `${SIYUAN_TIMEOUT}` 秒 (默认 60) 无响应 |
 
-错误统一写 stderr, 格式 `siyuan <命令>: <原因>` + 建议行 (`建议: ...`)。所有查询命令支持 `--json` 输出稳定字段; 设 `SIYUAN_FORMAT=json` 全局默认开启 `--json`。
+错误统一写 stderr, 格式 `siyuan <命令>: <原因>` + 建议行 (`建议: ...`)。所有命令支持 `--json` (稳定字段) / `--markdown` (表格/确认块) 输出模式, 两模式互斥; 设 `SIYUAN_FORMAT=json` 全局默认开启 `--json`。
 
 ## 五、环境变量
 

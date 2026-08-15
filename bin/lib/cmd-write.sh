@@ -138,7 +138,7 @@ sy_doc_create() {
 #   返回: 新文档 id
 # ---------------------------------------------------------------------------
 cmd_write() {
-  local nb="" title="" parent_id="" hpath="" file=""
+  local nb="" title="" parent_id="" hpath="" data="" file=""
   while [[ $# -gt 0 ]]; do
     case "$1" in
     --notebook | -n)
@@ -157,6 +157,10 @@ cmd_write() {
       hpath="${2:?}"
       shift 2
       ;;
+    --data | -d)
+      data="${2:?}"
+      shift 2
+      ;;
     --file | -f)
       file="${2:?}"
       shift 2
@@ -169,17 +173,19 @@ cmd_write() {
       sy_usage write
       return 0
       ;;
-    *) sy_die 2 "write: 未知参数 '$1'" "用法: siyuan write --notebook <nb> --title <t> [--parent-id <pid> | --path <hpath>] [--file <md>|stdin] [--json|--markdown]" ;;
+    *) sy_die 2 "write: 未知参数 '$1'" "用法: siyuan write --notebook <nb> --title <t> [--parent-id <pid> | --path <hpath>] [--data <md>|--file <md>|stdin] [--json|--markdown]" ;;
     esac
   done
   if [[ -z "$nb" || -z "$title" ]]; then
-    sy_die 2 "write: 缺少 --notebook 或 --title" "用法: siyuan write --notebook <nb> --title <t> [--parent-id <pid> | --path <hpath>] [--file <md>|stdin] [--json|--markdown]"
+    sy_die 2 "write: 缺少 --notebook 或 --title" "用法: siyuan write --notebook <nb> --title <t> [--parent-id <pid> | --path <hpath>] [--data <md>|--file <md>|stdin] [--json|--markdown]"
   fi
   local nbid
   nbid="$(sy_resolve_notebook write "$nb")" || return $?
 
   local md=""
-  if [[ -n "$file" ]]; then
+  if [[ -n "$data" ]]; then
+    md="$data"
+  elif [[ -n "$file" ]]; then
     md="$(cat "$file")"
   elif [[ ! -t 0 ]]; then
     md="$(cat)"
@@ -283,7 +289,8 @@ cmd_update_block() {
   if [[ -z "$data" && -n "$file" ]]; then data="$(cat "$file")"; fi
   if [[ -z "$data" && ! -t 0 ]]; then data="$(cat)"; fi
   if [[ "$SY_MODE" == "text" ]]; then
-    sy_kernel_or_die update-block block update --id "$id" --data "$data"
+    # 抑制内核原始输出 (block update 自身打印 ok), 统一单行 ok
+    sy_kernel_capture update-block block update --id "$id" --data "$data" >/dev/null || return $?
     echo "ok"
   else
     sy_kernel_capture update-block block update --id "$id" --data "$data" >/dev/null || return $?
@@ -319,7 +326,8 @@ cmd_delete_block() {
   done
   [[ -n "$id" ]] || sy_die 2 "delete-block: 缺少块 id" "用法: siyuan delete-block <block-id> [--json|--markdown]"
   if [[ "$SY_MODE" == "text" ]]; then
-    sy_kernel_or_die delete-block block delete --id "$id"
+    # 抑制内核原始输出 (block delete 自身打印 ok), 统一单行 ok
+    sy_kernel_capture delete-block block delete --id "$id" >/dev/null || return $?
     echo "ok"
   else
     sy_kernel_capture delete-block block delete --id "$id" >/dev/null || return $?
@@ -385,7 +393,8 @@ cmd_insert_block() {
   local iargs=(block insert --parent "$parent" --data "$data")
   [[ -n "$prev" ]] && iargs+=(--previous "$prev")
   if [[ "$SY_MODE" == "text" ]]; then
-    sy_kernel_or_die insert-block "${iargs[@]}"
+    # 抑制内核原始输出 (block insert 自身打印 ok), 统一单行 ok
+    sy_kernel_capture insert-block "${iargs[@]}" >/dev/null || return $?
     echo "ok"
   else
     sy_kernel_capture insert-block "${iargs[@]}" >/dev/null || return $?
@@ -457,7 +466,7 @@ cmd_replace_doc() {
   if [[ -z "$data" && ! -t 0 ]]; then data="$(cat)"; fi
   [[ -n "$data" ]] || sy_die 2 "replace-doc: 没有提供内容" "用 --data <md> / --file <f> / 管道 stdin 传入内容"
   if [[ "$SY_MODE" == "text" ]]; then
-    sy_replace_doc replace-doc "$id" "$data" || return $?
+    sy_replace_doc replace-doc "$id" "$data" --quiet || return $?
     echo "ok"
   else
     sy_replace_doc replace-doc "$id" "$data" --quiet || return $?
