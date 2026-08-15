@@ -1,587 +1,202 @@
 #!/usr/bin/env bash
-# siyuan — 思源笔记命令行封装 (基于 SiYuan-Kernel 3.7+)
+# siyuan — 思源笔记 shell 风格命令行 (基于 SiYuan-Kernel 3.8+)
 #
-# 设计原则:
-#   1. 统一处理 workspace 和输出格式 (-f json 优先, 便于程序解析)
-#   2. 常用操作封装成语义化子命令, 不直接暴露 cobra 那层
-#   3. 不知道某个子命令参数时, 透传给底层 SiYuan-Kernel (可加 --help 自查)
-#   4. 凡是返回 JSON 的, 都走 json; 写入操作返回 doc/block id
-#
-# 用法见 README.md; 底层命令全集: siyuan raw --help
+# 像 Linux 命令一样操作思源笔记: ls/cat/head/tail/find/grep/which/stat/tree/sql ...
+# 命令可组合 (管道 / 统一行式输出 / --json 稳定字段), 复杂性屏蔽在命令内部。
+# 退出码: 0=成功 1=业务错误 2=用法错误 3=配置错误 124=超时
+# 底层命令全集: siyuan raw --help; 环境变量: SIYUAN_KERNEL/SIYUAN_WORKSPACE/SIUAN_FORMAT/SIYUAN_TIMEOUT
 
 set -euo pipefail
 
-# -----------------------------------------------------------------------------
-# 配置: 可被环境变量覆盖
-# -----------------------------------------------------------------------------
-SIYUAN_KERNEL="${SIYUAN_KERNEL:-/Applications/SiYuan.app/Contents/Resources/kernel/SiYuan-Kernel}"
-SIYUAN_WORKSPACE="${SIYUAN_WORKSPACE:-/Users/geeyu/space/siyuan}"
-SIYUAN_DEFAULT_NOTEBOOK="${SIYUAN_DEFAULT_NOTEBOOK:-}"   # 不设则用 notebooks 命令查看
-SIYUAN_FORMAT="${SIYUAN_FORMAT:-json}"                    # 默认 json 便于解析, 人看可设 table
+BIN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# ---------------------------------------------------------------------------
+# 配置检查 (框架层)
+# ---------------------------------------------------------------------------
+source "$BIN_DIR/lib/framework.sh"
 
 if [[ ! -x "$SIYUAN_KERNEL" ]]; then
-  echo "错误: 找不到思源内核二进制 '$SIYUAN_KERNEL'" >&2
-  echo "请设置 SIYUAN_KERNEL 环境变量指向 SiYuan-Kernel 路径" >&2
-  exit 1
+  echo "siyuan: 找不到内核二进制 '$SIYUAN_KERNEL'" >&2
+  echo "  建议: 设置 SIYUAN_KERNEL 环境变量指向 SiYuan-Kernel 路径" >&2
+  exit 3
 fi
-
 if [[ ! -d "$SIYUAN_WORKSPACE" ]]; then
-  echo "错误: 工作区不存在 '$SIYUAN_WORKSPACE'" >&2
-  echo "请设置 SIYUAN_WORKSPACE 环境变量" >&2
-  exit 1
+  echo "siyuan: 工作区不存在 '$SIYUAN_WORKSPACE'" >&2
+  echo "  建议: 设置 SIYUAN_WORKSPACE 环境变量指向思源工作区" >&2
+  exit 3
 fi
 
-# -----------------------------------------------------------------------------
-# 底层调用: 统一带 -w 和 -f
-# raw 命令透传, 不加默认 -f
-# -----------------------------------------------------------------------------
-siyuan_raw() {
-  "$SIYUAN_KERNEL" -w "$SIYUAN_WORKSPACE" "$@"
-}
+# ---------------------------------------------------------------------------
+# 命令注册 (命令名 -> 处理函数; 别名共享处理函数)
+# ---------------------------------------------------------------------------
+source "$BIN_DIR/lib/cmd-query.sh"
+source "$BIN_DIR/lib/cmd-misc.sh"
+source "$BIN_DIR/lib/cmd-write.sh"
 
-siyuan_json() {
-  "$SIYUAN_KERNEL" -w "$SIYUAN_WORKSPACE" -f json "$@"
-}
+sy_register ls              cmd_ls            list notebooks nb
+sy_register tree            cmd_tree          outline
+sy_register cat             cmd_cat           read
+sy_register head            cmd_head
+sy_register tail            cmd_tail
+sy_register find            cmd_find          search
+sy_register grep            cmd_grep
+sy_register which           cmd_which
+sy_register stat            cmd_stat          get
+sy_register sql             cmd_sql
+sy_register children        cmd_children
+sy_register backlinks       cmd_backlinks     bl
+sy_register write           cmd_write         create
+sy_register append          cmd_append
+sy_register insert-block    cmd_insert_block
+sy_register update-block    cmd_update_block
+sy_register delete-block    cmd_delete_block
+sy_register replace-doc     cmd_replace_doc
+sy_register move            cmd_move
+sy_register remove          cmd_remove        rm
+sy_register raw             cmd_raw
+sy_register raw-help        cmd_raw_help
+sy_register help            cmd_help
 
-# 思源内核 HTTP API 端口 (内核 serve 时监听)
-SIYUAN_API_PORT="${SIYUAN_API_PORT:-6806}"
-SIYUAN_API_HOST="${SIYUAN_API_HOST:-127.0.0.1}"
-
-# 调用思源 HTTP API. 用法: http_api <endpoint> <json-body>
-# 返回: 原始 JSON 响应 (含 code/msg/data)
-# 依赖内核在运行 (open -a SiYuan 会自动起内核)
-http_api() {
-  local endpoint="$1"
-  local body="$2"
-  curl -s -m 10 -X POST "http://$SIYUAN_API_HOST:$SIYUAN_API_PORT$endpoint" \
-    -H "Content-Type: application/json" -d "$body" 2>/dev/null
-}
-
-# http_api 但把 data 字段提取出来 (适合返回 id 的接口)
-http_api_data() {
-  local endpoint="$1"
-  local body="$2"
-  http_api "$endpoint" "$body" | python3 -c "
-import sys, json
-d = json.load(sys.stdin)
-if d.get('code') == 0:
-    data = d.get('data')
-    print(data if isinstance(data, str) else (data or ''))
-else:
-    print('Error: ' + d.get('msg', 'unknown'), file=sys.stderr)
-    sys.exit(1)
-" 2>&1
-}
-
-# 从 .sy path 提取 block id: /20241206161328-okalxz1.sy -> 20241206161328-okalxz1
-path_to_id() {
-  local p="$1"
-  basename "$p" .sy
-}
-
-# 取文档的 internal path (含 .sy). 用 SQL 查最稳, document get 的 CLI 有 bug
-# 用法: get_doc_path <doc-id>
-get_doc_path() {
-  local id="$1"
-  siyuan_json sql "SELECT path FROM blocks WHERE id='$id'" 2>/dev/null \
-    | python3 -c "
-import sys, json
-d = json.load(sys.stdin)
-print(d[0]['path'] if d else '')
-" 2>/dev/null
-}
-
-# 取父文档的 internal path (作为目录, 不含 .sy). 用法: get_parent_dir <parent-doc-id>
-get_parent_dir() {
-  local pid="$1"
-  local p
-  p=$(get_doc_path "$pid")
-  # /a/b/parent.sy -> /a/b/parent
-  echo "${p%.sy}"
-}
-
-# 解析 notebook id: 支持传 id 或名字 (中文名自动查表)
-resolve_notebook() {
-  local nb="$1"
-  # 已经是 id 格式 (20241205132806-co02mxj, 后缀长度 6-7 位不定) 直接返回
-  if [[ "$nb" =~ ^[0-9]{14}-[a-z0-9]{6,8}$ ]]; then
-    echo "$nb"
-    return
-  fi
-  # 否则按名字查
-  local id
-  id=$(siyuan_json notebook list 2>/dev/null \
-    | python3 -c "
-import sys, json
-name = '$nb'
-for n in json.load(sys.stdin):
-    if n['name'] == name:
-        print(n['id']); break
-" 2>/dev/null)
-  if [[ -z "$id" ]]; then
-    echo "错误: 找不到名为 '$nb' 的笔记本。可用 siyuan notebooks 查看" >&2
-    return 1
-  fi
-  echo "$id"
-}
-
-# =============================================================================
-# 子命令实现
-# =============================================================================
-
-cmd_notebooks() {
-  ## 列出所有笔记本
-  siyuan_json notebook list
-}
-
-cmd_search() {
-  ## 搜索文档 (按关键词). 用法: siyuan search <keyword>
-  ## 输出每行: doc_id<TAB>hpath<TAB>notebook
-  local kw="$1"
-  if [[ -z "$kw" ]]; then
-    echo "用法: siyuan search <keyword>" >&2; return 1
-  fi
-  siyuan_json document search "$kw" | python3 -c "
-import sys, json
-for r in json.load(sys.stdin):
-    doc_id = r['path'].split('/')[-1].replace('.sy','')
-    print(f'{doc_id}\t{r[\"hPath\"]}\t{r[\"box\"]}')
-"
-}
-
-cmd_list() {
-  ## 列出笔记本下的文档. 用法: siyuan list <notebook> [path]
-  local nb="$1"; local pth="${2:-/}"
-  if [[ -z "$nb" ]]; then
-    echo "用法: siyuan list <notebook-id-or-name> [path]" >&2; return 1
-  fi
-  local nbid
-  nbid=$(resolve_notebook "$nb") || return 1
-  siyuan_json document list --notebook "$nbid" --path "$pth" | python3 -c "
-import sys, json
-for d in json.load(sys.stdin):
-    print(f'{d[\"id\"]}\t{d[\"name\"]}\t{d.get(\"subFileCount\",0)}子\t{d[\"path\"]}')
-"
-}
-
-cmd_read() {
-  ## 读取文档 markdown 内容. 用法: siyuan read <doc-id>
-  ## 返回纯 markdown (含 frontmatter, 去掉块属性 {: id=...})
-  local id="$1"
-  if [[ -z "$id" ]]; then
-    echo "用法: siyuan read <doc-id>" >&2; return 1
-  fi
-  # export md 输出最干净 (带 frontmatter); 想要原始 kramdown 用 siyuan raw block kramdown --id <id>
-  siyuan_raw export md --id "$id"
-}
-
-cmd_get() {
-  ## 取文档元信息. 用法: siyuan get <doc-id>
-  local id="$1"
-  if [[ -z "$id" ]]; then
-    echo "用法: siyuan get <doc-id>" >&2; return 1
-  fi
-  siyuan_json document get --id "$id"
-}
-
-cmd_write() {
-  ## 创建文档. 用法:
-  ##   siyuan write --notebook <nb> --title <title> [--parent-id <pid>] [--path <hpath>] [--file <md>]
-  ##   echo 'md...' | siyuan write --notebook <nb> --title <title> --parent-id <pid>
-  ##
-  ## 两种定位父级的方式 (二选一, 都不传则建在笔记本根):
-  ##   --parent-id <pid>   父文档块 ID (推荐, 最可靠)
-  ##   --path <hpath>      父文档人类可读路径, 如 /工作/供应链/调课
-  ##
-  ## 内容来源: --file <文件> | stdin | 无内容建空文档
-  ## 返回: 新文档 id
-  ##
-  ## ⚠ 经验: 思源 createDocWithMd 按 hpath 创建时会重复建同名中间块 (已知 API 行为).
-  ##   所以这里用两步: 1) createDocWithMd 创建; 2) 若指定 --parent-id, 用 moveDocs(internal path)
-  ##   移到正确父块下, 并删掉产生的空中间块.
-  local nb="" title="" parent_id="" hpath="" file=""
-  while [[ $# -gt 0 ]]; do
-    case "$1" in
-      --notebook|-n)  nb="$2"; shift 2;;
-      --title|-t)     title="$2"; shift 2;;
-      --parent-id)    parent_id="$2"; shift 2;;
-      --path|-p)      hpath="$2"; shift 2;;
-      --file|-f)      file="$2"; shift 2;;
-      *) echo "未知参数: $1" >&2; return 1;;
-    esac
-  done
-  if [[ -z "$nb" || -z "$title" ]]; then
-    echo "用法: siyuan write --notebook <nb> --title <title> [--parent-id <pid> | --path <hpath>] [--file <md>]" >&2
-    return 1
-  fi
-  local nbid; nbid=$(resolve_notebook "$nb") || return 1
-
-  local md=""
-  if [[ -n "$file" ]]; then
-    md=$(cat "$file")
-  elif [[ ! -t 0 ]]; then
-    md=$(cat)
-  fi
-
-  # 确定 createDocWithMd 的 path 参数 (完整文档路径 = 父hpath + 文档名)
-  local doc_path
-  if [[ -n "$parent_id" ]]; then
-    # 用 parent-id: 先查父文档的 hpath
-    local parent_hpath
-    parent_hpath=$(siyuan_json sql "SELECT hpath FROM blocks WHERE id='$parent_id'" 2>/dev/null \
-      | python3 -c "import sys,json;d=json.load(sys.stdin);print(d[0]['hpath'] if d else '')" 2>/dev/null)
-    if [[ -z "$parent_hpath" ]]; then
-      echo "错误: 找不到父文档 '$parent_id'" >&2; return 1
-    fi
-    doc_path="${parent_hpath}/${title}"
-  elif [[ -n "$hpath" ]]; then
-    doc_path="${hpath}/${title}"
-  else
-    doc_path="/${title}"
-  fi
-
-  # 1. createDocWithMd 创建 (可能产生重复中间块, 后面清理)
-  local new_id created_path
-  new_id=$(python3 -c "
-import json, urllib.request
-md = '''$md'''
-payload = json.dumps({'notebook':'$nbid','path':'$doc_path','markdown':md}).encode()
-req = urllib.request.Request('http://$SIYUAN_API_HOST:$SIYUAN_API_PORT/api/filetree/createDocWithMd',
-    data=payload, headers={'Content-Type':'application/json'})
-print(urllib.request.urlopen(req, timeout=10).read().decode())
-" 2>/dev/null | python3 -c "import sys,json;print(json.load(sys.stdin).get('data',''))" 2>/dev/null)
-  if [[ -z "$new_id" ]]; then
-    echo "错误: 创建失败" >&2; return 1
-  fi
-
-  # 2. 若指定 parent-id, 用 moveDocs 移到正确父块下 (避免重复中间块)
-  if [[ -n "$parent_id" ]]; then
-    local parent_dir new_from_path to_path
-    parent_dir=$(get_parent_dir "$parent_id")
-    new_from_path=$(get_doc_path "$new_id")
-    to_path="${parent_dir}.sy"   # moveDocs 的 toPath 要父文档的 .sy 路径
-    http_api "/api/filetree/moveDocs" \
-      "{\"fromPaths\":[\"$new_from_path\"],\"toNotebook\":\"$nbid\",\"toPath\":\"$to_path\"}" >/dev/null 2>&1
-    # 删掉 createDocWithMd 产生的空中间块 (它的 hpath == 父hpath 但 id 不同)
-    # 中间块的 path 是 new_from_path 的父目录段
-    local mid_block_id
-    mid_block_id=$(echo "$new_from_path" | python3 -c "
-import sys
-p = sys.stdin.read().strip()
-# /a/b/mid/new.sy -> mid
-parts = p.strip('/').split('/')
-print(parts[-2].replace('.sy','') if len(parts)>=2 else '')
-" 2>/dev/null)
-    if [[ -n "$mid_block_id" && "$mid_block_id" != "$parent_id" ]]; then
-      http_api "/api/filetree/removeDocByID" "{\"id\":\"$mid_block_id\"}" >/dev/null 2>&1
-    fi
-  fi
-
-  echo "$new_id"
-}
-
-cmd_append() {
-  ## 向文档追加内容. 用法:
-  ##   siyuan append <doc-id> --data 'md...' 
-  ##   siyuan append <doc-id> --file <md-file>
-  ##   echo 'md...' | siyuan append <doc-id>
-  local id="$1"; shift
-  local data="" file=""
-  while [[ $# -gt 0 ]]; do
-    case "$1" in
-      --data|-d)  data="$2"; shift 2;;
-      --file|-f)  file="$2"; shift 2;;
-      *) echo "未知参数: $1" >&2; return 1;;
-    esac
-  done
-  if [[ -z "$id" ]]; then
-    echo "用法: siyuan append <doc-id> [--data <md> | --file <md> | stdin]" >&2; return 1
-  fi
-  if [[ -z "$data" && -n "$file" ]]; then data=$(cat "$file"); fi
-  if [[ -z "$data" && ! -t 0 ]]; then data=$(cat); fi
-  if [[ -z "$data" ]]; then
-    echo "错误: 没有提供内容" >&2; return 1
-  fi
-  # block append 返回 ok / 失败信息, 非 JSON
-  siyuan_raw block append --parent "$id" --data "$data"
-}
-
-cmd_update_block() {
-  ## 更新指定块内容. 用法: siyuan update-block <block-id> --data 'md...'
-  local id="$1"; shift
-  local data="" file=""
-  while [[ $# -gt 0 ]]; do
-    case "$1" in
-      --data|-d) data="$2"; shift 2;;
-      --file|-f) file="$2"; shift 2;;
-      *) echo "未知参数: $1" >&2; return 1;;
-    esac
-  done
-  if [[ -z "$id" ]]; then
-    echo "用法: siyuan update-block <block-id> [--data <md> | --file <md>]" >&2; return 1
-  fi
-  if [[ -z "$data" && -n "$file" ]]; then data=$(cat "$file"); fi
-  if [[ -z "$data" && ! -t 0 ]]; then data=$(cat); fi
-  siyuan_raw block update --id "$id" --data "$data" >/dev/null && echo "ok"
-}
-
-cmd_delete_block() {
-  ## 删除块. 用法: siyuan delete-block <block-id>
-  local id="$1"
-  if [[ -z "$id" ]]; then
-    echo "用法: siyuan delete-block <block-id>" >&2; return 1
-  fi
-  siyuan_raw block delete --id "$id" >/dev/null && echo "ok"
-}
-
-cmd_insert_block() {
-  ## 在指定块后插入新块. 用法:
-  ##   siyuan insert-block --previous <block-id> --data 'md'   (在某块后插入)
-  ##   siyuan insert-block --parent <doc-id> --data 'md'        (追加到文档末尾)
-  ## ⚠ block insert 要求 parent 必填, --previous 只是兄弟锚点. 
-  ##   传 --previous 时会自动查其 parent.
-  local prev="" parent="" data="" file=""
-  while [[ $# -gt 0 ]]; do
-    case "$1" in
-      --previous)   prev="$2"; shift 2;;
-      --parent|-p) parent="$2"; shift 2;;
-      --data|-d)   data="$2"; shift 2;;
-      --file|-f)   file="$2"; shift 2;;
-      *) echo "未知参数: $1" >&2; return 1;;
-    esac
-  done
-  if [[ -z "$prev" && -z "$parent" ]]; then
-    echo "用法: siyuan insert-block --previous <block-id> | --parent <doc-id> [--data <md> | --file <md> | stdin]" >&2; return 1
-  fi
-  if [[ -z "$data" && -n "$file" ]]; then data=$(cat "$file"); fi
-  if [[ -z "$data" && ! -t 0 ]]; then data=$(cat); fi
-  if [[ -z "$data" ]]; then echo "错误: 没有提供内容" >&2; return 1; fi
-  # --previous 时自动查 parent (block insert 要求 parent 必填)
-  if [[ -n "$prev" && -z "$parent" ]]; then
-    parent=$(siyuan_json sql "SELECT parent_id FROM blocks WHERE id='$prev'" 2>/dev/null \
-      | python3 -c "import sys,json;d=json.load(sys.stdin);print(d[0]['parent_id'] if d and d[0].get('parent_id') else '')" 2>/dev/null)
-    if [[ -z "$parent" ]]; then
-      echo "错误: 无法解析 previous 块的 parent, 请显式传 --parent" >&2; return 1
-    fi
-  fi
-  local args=(block insert --parent "$parent" --data "$data")
-  [[ -n "$prev" ]] && args+=(--previous "$prev")
-  siyuan_raw "${args[@]}" >/dev/null && echo "ok"
-}
-
-cmd_children() {
-  ## 查询文档/块的子块列表. 用法: siyuan children <block-id>
-  ## 返回 JSON: 子块 id, type, content
-  local id="$1"
-  if [[ -z "$id" ]]; then
-    echo "用法: siyuan children <block-id>" >&2; return 1
-  fi
-  siyuan_json block children --id "$id" | python3 -c "
-import sys, json
-d = json.load(sys.stdin)
-for b in (d if isinstance(d, list) else []):
-    print(f\"{b.get('id','')}\\t{b.get('type','')}\\t{b.get('content','')[:60]}\")
-"
-}
-
-cmd_replace_doc() {
-  ## 替换整篇文档内容 (删旧内容 + 写新内容). 用法:
-  ##   siyuan replace-doc <doc-id> --file <md>
-  ##   echo 'new content' | siyuan replace-doc <doc-id>
-  ## ⚠ 会先删文档下所有子块, 再写入新 markdown. 标题块(文档名)保留.
-  local id="$1"; shift
-  local data="" file=""
-  while [[ $# -gt 0 ]]; do
-    case "$1" in
-      --data|-d) data="$2"; shift 2;;
-      --file|-f) file="$2"; shift 2;;
-      *) echo "未知参数: $1" >&2; return 1;;
-    esac
-  done
-  if [[ -z "$id" ]]; then
-    echo "用法: siyuan replace-doc <doc-id> [--data <md> | --file <md> | stdin]" >&2; return 1
-  fi
-  if [[ -z "$data" && -n "$file" ]]; then data=$(cat "$file"); fi
-  if [[ -z "$data" && ! -t 0 ]]; then data=$(cat); fi
-  if [[ -z "$data" ]]; then echo "错误: 没有提供内容" >&2; return 1; fi
-  # 1. 删除文档下所有内容块 (用 root_id 查全部子块, 跳过文档块本身 type=d)
-  local child_ids
-  child_ids=$(siyuan_json sql "SELECT id FROM blocks WHERE root_id='$id' AND type != 'd'" 2>/dev/null \
-    | python3 -c "import sys,json;d=json.load(sys.stdin);print(' '.join(b['id'] for b in d))" 2>/dev/null)
-  for cid in $child_ids; do
-    siyuan_raw block delete --id "$cid" >/dev/null 2>&1
-  done
-  # 2. 追加新内容
-  siyuan_raw block append --parent "$id" --data "$data" >/dev/null && echo "ok"
-}
-
-cmd_sql() {
-  ## 执行 SQL 查询. 用法: siyuan sql "<sql>" [--limit N]
-  local stmt="$1"; shift
-  local limit=100
-  while [[ $# -gt 0 ]]; do
-    case "$1" in
-      --limit|-l) limit="$2"; shift 2;;
-      *) shift;;
-    esac
-  done
-  if [[ -z "$stmt" ]]; then
-    echo "用法: siyuan sql \"<statement>\" [--limit N]" >&2; return 1
-  fi
-  siyuan_json sql "$stmt" -l "$limit"
-}
-
-cmd_backlinks() {
-  ## 查询块的反链. 用法: siyuan backlinks <block-id> [--keyword <kw>]
-  local id="$1"; shift
-  local kw=""
-  while [[ $# -gt 0 ]]; do
-    case "$1" in
-      --keyword|-k) kw="$2"; shift 2;;
-      *) shift;;
-    esac
-  done
-  if [[ -z "$id" ]]; then
-    echo "用法: siyuan backlinks <block-id> [--keyword <kw>]" >&2; return 1
-  fi
-  local args=(ref backlinks --id "$id")
-  [[ -n "$kw" ]] && args+=(--keyword "$kw")
-  siyuan_json "${args[@]}"
-}
-
-cmd_outline() {
-  ## 取文档大纲 (标题树). 用法: siyuan outline <doc-id>
-  local id="$1"
-  if [[ -z "$id" ]]; then
-    echo "用法: siyuan outline <doc-id>" >&2; return 1
-  fi
-  siyuan_json outline get --id "$id"
-}
-
-cmd_remove() {
-  ## 删除文档. 用法: siyuan remove <doc-id>
-  ## ⚠ 文件不存在的孤儿块用 removeDocByID 可能报 tree not found, 需重启内核清索引
-  local id="$1"
-  if [[ -z "$id" ]]; then
-    echo "用法: siyuan remove <doc-id>" >&2; return 1
-  fi
-  # 先试 CLI, 失败则用 HTTP API removeDocByID
-  siyuan_raw document remove --id "$id" 2>/dev/null || \
-    http_api "/api/filetree/removeDocByID" "{\"id\":\"$id\"}" >/dev/null
-}
-
-cmd_move() {
-  ## 移动文档到另一父文档下. 用法: siyuan move <doc-id> --parent-id <parent-doc-id>
-  ## ⚠ document move CLI 只能跨笔记本, 同笔记本改父级要用 HTTP API moveDocs
-  local id="$1"; shift
-  local parent_id=""
-  while [[ $# -gt 0 ]]; do
-    case "$1" in
-      --parent-id|-p) parent_id="$2"; shift 2;;
-      *) echo "未知参数: $1" >&2; return 1;;
-    esac
-  done
-  if [[ -z "$id" || -z "$parent_id" ]]; then
-    echo "用法: siyuan move <doc-id> --parent-id <parent-doc-id>" >&2; return 1
-  fi
-  local from_path to_path nbid
-  from_path=$(get_doc_path "$id")
-  to_path=$(get_doc_path "$parent_id")   # 父文档的 .sy 路径
-  nbid=$(siyuan_json sql "SELECT box FROM blocks WHERE id='$id'" 2>/dev/null \
-    | python3 -c "import sys,json;d=json.load(sys.stdin);print(d[0]['box'] if d else '')" 2>/dev/null)
-  if [[ -z "$from_path" || -z "$to_path" || -z "$nbid" ]]; then
-    echo "错误: 无法解析路径" >&2; return 1
-  fi
-  http_api "/api/filetree/moveDocs" \
-    "{\"fromPaths\":[\"$from_path\"],\"toNotebook\":\"$nbid\",\"toPath\":\"$to_path\"}" >/dev/null \
-    && echo "ok" || echo "失败" >&2
-}
-
-# -----------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
 # 帮助
-# -----------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
 usage() {
   cat <<'EOF'
-siyuan — 思源笔记命令行封装 (基于 SiYuan-Kernel 3.7+)
+siyuan — 思源笔记命令行 (基于 SiYuan-Kernel 3.8+, shell 风格)
 
-读取类:
-  notebooks                         列出所有笔记本
-  search <keyword>                  搜索文档, 输出 doc_id <TAB> hpath <TAB> notebook
-  list <notebook> [path]            列出笔记本下文档 (notebook 可传 id 或中文名)
-  read <doc-id>                     读取文档 markdown 源
-  get <doc-id>                      取文档元信息
-  outline <doc-id>                  取文档大纲 (标题树)
-  backlinks <block-id> [--keyword]  查询反链
-  sql "<statement>" [--limit N]     执行 SQL 查询
+用法: siyuan <命令> [参数...]
 
-写入/编辑类:
-  write --notebook <nb> --title <t> [--parent-id <pid> | --path <hpath>] [--file <md>|stdin]
-                                    创建文档 (推荐用 --parent-id), 返回新文档 id
-  append <doc-id> [--data <md>|--file <md>|stdin]
-                                    向文档末尾追加内容
-  insert-block --previous <bid> | --parent <doc-id> [--data <md>]
-                                    在某块后插入新块
-  update-block <block-id> [--data <md>|--file <md>]
-                                    替换指定块内容
-  replace-doc <doc-id> [--data <md>|--file <md>|stdin]
-                                    替换整篇文档内容 (删旧写新, 保留标题)
-  delete-block <block-id>           删除指定块
-  move <doc-id> --parent-id <pid>    移动文档到另一父文档下
-  remove <doc-id>                   删除文档
+查询 (输出行式可管道组合, --json 出稳定字段):
+  ls [笔记本] [路径] [-l] [--json]    列笔记本/文档 (笔记本支持 id 或中文名)
+  tree <doc> [-l] [--json]            标题树/大纲
+  cat <doc> [--json]                  读文档 markdown (最准)
+  head/tail <doc> [-n N] [--json]     读文档开头/末尾 N 行 (默认 10)
+  find <关键词> [--notebook <nb>] [--json]  跨库搜文档标题
+  grep <pattern> [-v] [-i] [-l] [-m 0-3] [--notebook <nb>] [--json]
+                                      内容全文检索; 管道输入时按行过滤 (真 grep)
+  which <doc-id|标题|/路径> [-v] [--json]  定位文档 → 输出 doc id
+  stat <doc> [--json]                 文档元信息
+  sql "<语句>" [-l N] [-H] [--json]   SQL 查询
 
-查询类:
-  children <block-id>              列出块的子块 (编辑前定位用)
+块查询:
+  children <block-id> [--json]        子块列表 (编辑前定位)
+  backlinks <block-id> [--keyword <kw>] [--json]  反链
+
+写入/编辑:
+  write --notebook <nb> --title <t> [--parent-id <pid>|--path <hpath>] [--file|stdin]
+                                      建文档 (推荐 --parent-id), 返回新文档 id
+  append <doc-id> [--data|--file|stdin]   追加到文档末尾
+  insert-block --previous <bid>|--parent <doc-id> [--data|--file|stdin]  插入块
+  update-block <block-id> [--data|--file]  替换块内容
+  replace-doc <doc-id> [--data|--file|stdin]  替换整篇文档 (删旧写新, 保留标题)
+  delete-block <block-id>              删除块
+  move <doc-id> --parent-id <pid>      移动文档
+  remove <doc-id>                      删除文档
+
+底层:
+  raw <args...>                        透传 SiYuan-Kernel (自带 -w, 默认 table)
+  raw-help <sub...>                    查底层命令帮助 (例: raw-help block insert)
 
 其他:
-  raw <args...>                     透传到底层 SiYuan-Kernel (加 -w)
-  raw-help [subcommand...]           查看底层命令帮助 (例: raw-help block append)
+  help [命令]                          帮助; notebooks/list/read/get/outline/search 为旧名别名
 
-环境变量:
-  SIYUAN_KERNEL       内核二进制路径
-  SIYUAN_WORKSPACE    工作区路径
-  SIYUAN_DEFAULT_NOTEBOOK  默认笔记本 (未实现)
-  SIYUAN_FORMAT       默认输出格式 (默认 json)
-
-注意: 不确定某底层命令参数时, 用 `siyuan raw <cmd> --help` 或 `siyuan raw-help <cmd>` 自查。
+文档引用 <doc>: doc-id | 标题 | /完整路径 (用 which 定位, 多匹配报错并列出候选)
+环境变量: SIYUAN_KERNEL / SIYUAN_WORKSPACE / SIYUAN_FORMAT(text|json) /
+          SIYUAN_TIMEOUT(默认60) / SIYUAN_DEFAULT_NOTEBOOK / SIYUAN_API_HOST / SIYUAN_API_PORT
 EOF
 }
 
-# -----------------------------------------------------------------------------
-# 主入口
-# -----------------------------------------------------------------------------
-main() {
-  if [[ $# -eq 0 ]]; then
-    usage; exit 0
-  fi
-
-  local cmd="$1"; shift
-  case "$cmd" in
-    notebooks|nb)       cmd_notebooks "$@";;
-    search)             cmd_search "$@";;
-    list|ls)            cmd_list "$@";;
-    read)               cmd_read "$@";;
-    get)                cmd_get "$@";;
-    outline)            cmd_outline "$@";;
-    backlinks|bl)       cmd_backlinks "$@";;
-    sql)                cmd_sql "$@";;
-    write|create)       cmd_write "$@";;
-    append)             cmd_append "$@";;
-    update-block)       cmd_update_block "$@";;
-    insert-block)      cmd_insert_block "$@";;
-    delete-block)      cmd_delete_block "$@";;
-    replace-doc)       cmd_replace_doc "$@";;
-    children)          cmd_children "$@";;
-    move)              cmd_move "$@";;
-    remove|rm)          cmd_remove "$@";;
-    raw)                siyuan_raw "$@";;
-    raw-help)           siyuan_raw "$@" --help;;
-    -h|--help|help)     usage;;
-    *) 
-      echo "未知命令: $cmd" >&2
-      echo "运行 'siyuan help' 查看用法, 或 'siyuan raw --help' 看底层命令全集" >&2
-      exit 1
+# 单命令帮助
+sy_usage() {
+  case "$1" in
+    ls)       cat <<'EOF'
+用法: siyuan ls [笔记本] [路径] [-l] [--json]
+  无参: 列笔记本 (设 SIYUAN_DEFAULT_NOTEBOOK 时列该库根目录文档)
+  ls 工作          列笔记本「工作」根目录文档
+  ls 工作 /供应链   列 /供应链 下的文档 (支持 hpath 或 internal path)
+  -l  详情 (子文档数/大小/修改时间); --json 稳定字段 {id,name,path,size,subFileCount,mtime}
+EOF
+;;
+    tree)     cat <<'EOF'
+用法: siyuan tree <doc> [-l] [--json]
+  标题树/大纲 (对应 outline get); 文本按标题层级缩进, -l 附块 id
+EOF
+;;
+    cat)      cat <<'EOF'
+用法: siyuan cat <doc> [--json]
+  读文档 markdown (export md, 最准); 文本=纯 markdown 可直接管道消费
+EOF
+;;
+    head|tail) cat <<'EOF'
+用法: siyuan head|tail <doc> [-n N] [--json]
+  读文档开头/末尾 N 行 (默认 10; 内部 cat 截断, 不新增内核调用)
+EOF
+;;
+    find)     cat <<'EOF'
+用法: siyuan find <关键词> [--notebook <nb>] [-l N] [--json]
+  跨库搜文档标题 (document search); 与 grep 区分: find 找文档, grep 找内容
+  输出: doc_id<TAB>hPath<TAB>notebook_id
+EOF
+;;
+    grep)     cat <<'EOF'
+用法: siyuan grep <pattern> [-v] [-i] [-l] [-m 0-3] [--notebook <nb>] [-s N] [--json]
+  双模式:
+    stdin 非终端: 按行过滤上游输出 (真 grep), 如 siyuan ls 工作 | siyuan grep 调课
+    stdin 终端:   内容全文检索 (kernel search; -m 0=关键词 1=query-syntax 2=sql 3=regex)
+  内容模式输出: doc_id<TAB>hPath<TAB>内容; -l 只列 doc_id; 无匹配退出 1
+EOF
+;;
+    which)    cat <<'EOF'
+用法: siyuan which <doc-id|标题|/路径> [-v] [--json]
+  定位文档 → 输出唯一 doc id (可组合: cat $(siyuan which 标题))
+  -v 附 hPath/notebook; 多匹配列出候选并退出 1 (用 /完整路径 消歧)
+EOF
+;;
+    stat)     cat <<'EOF'
+用法: siyuan stat <doc> [--json]
+  文档元信息 (document get); 文本 key: value, --json 原始对象
+EOF
+;;
+    sql)      cat <<'EOF'
+用法: siyuan sql "<语句>" [-l N] [-H] [--json]
+  SQL 查询 (透传内核, 默认 limit 100); 文本=TSV 行 (无表头可组合, -H 加表头)
+EOF
+;;
+    children|backlinks|write|append|insert-block|update-block|delete-block|replace-doc|move|remove|raw|raw-help)
+      usage >&2
       ;;
+    *) usage >&2;;
   esac
 }
 
+# ---------------------------------------------------------------------------
+# 主入口
+# ---------------------------------------------------------------------------
+cmd_help() {
+  if [[ -n "${1:-}" ]]; then
+    sy_usage "$1"
+  else
+    usage
+  fi
+}
+
+main() {
+  if [[ $# -eq 0 ]]; then
+    usage
+    return 0
+  fi
+  local cmd="$1"; shift
+  case "$cmd" in
+    -h|--help|help) cmd_help "$@"; return 0;;
+  esac
+  SY_CMD_NAME="$cmd"
+  local rc=0
+  sy_dispatch "$cmd" "$@" || rc=$?
+  if [[ $rc -eq 255 ]]; then
+    echo "siyuan: 未知命令: $cmd" >&2
+    echo "  建议: 运行 'siyuan help' 查看用法, 或 'siyuan raw --help' 看底层命令全集" >&2
+    return 2
+  fi
+  return "$rc"
+}
 main "$@"

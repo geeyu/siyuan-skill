@@ -3,7 +3,7 @@ name: siyuan
 description: >
   思源笔记 (SiYuan) 命令行操作能力。当用户提到 思源、笔记、siyuan、写入笔记、
   查笔记、搜文档、记到笔记里、整理成笔记、数据库、属性视图、排查记录库、字段、AV
-  等场景时触发。提供笔记本/文档/块/SQL/数据库(AV) 全套读写能力。基于 SiYuan-Kernel 3.7+ CLI 封装。
+  等场景时触发。提供笔记本/文档/块/SQL/数据库(AV) 全套读写能力。基于 SiYuan-Kernel 3.8+ CLI 封装。
 ---
 
 # siyuan — 思源笔记操作 skill
@@ -22,22 +22,26 @@ description: >
 ~/.pi/skills/siyuan/bin/siyuan <command> [args]
 ```
 
-默认输出 JSON, 写入操作返回 doc/block id。工作区 `/Users/geeyu/space/siyuan` (可被 `SIYUAN_WORKSPACE` 覆盖)。
+shell 风格命令集 (类似 Linux 命令操作思源笔记): 默认人类可读文本 (行式可管道组合), `--json` 输出稳定字段 (agent 用), 写入操作返回 doc/block id。工作区 `/Users/geeyu/space/siyuan` (可被 `SIYUAN_WORKSPACE` 覆盖)。
 
 ## 常用命令速查
 
-### 读取
+### 读取 (查询类, shell 风格)
 | 命令 | 作用 |
 |------|------|
-| `notebooks` | 列出所有笔记本 (id + 名字) |
-| `search <keyword>` | 搜文档, 输出 `doc_id<TAB>hpath<TAB>notebook` |
-| `list <notebook> [path]` | 列出笔记本下文档 (notebook 可传中文名) |
-| `read <doc-id>` | 读文档 markdown 源 (最准, 不受索引滞后影响) |
-| `get <doc-id>` | 取文档元信息 |
-| `outline <doc-id>` | 取大纲 (标题树) |
-| `backlinks <block-id> [--keyword]` | 查反链 |
+| `ls [笔记本] [路径] [-l]` | 列笔记本/文档 (笔记本可传中文名, 路径支持 /hpath) |
+| `tree <doc>` | 标题树/大纲 |
+| `cat <doc>` | 读文档 markdown 源 (最准, 不受索引滞后影响) |
+| `head/tail <doc> [-n N]` | 读文档开头/末尾 N 行 (默认 10) |
+| `find <关键词> [--notebook <nb>]` | 跨库搜文档标题, 输出 `doc_id<TAB>hpath<TAB>notebook` |
+| `grep <pattern> [-v] [-i] [-m 0-3]` | 内容全文检索; **管道输入时按行过滤** (`ls 工作 \| grep 调课`) |
+| `which <doc-id\|标题\|/路径> [-v]` | 定位文档 → 输出唯一 doc id (多匹配报错并列出候选) |
+| `stat <doc>` | 文档元信息 |
+| `sql "<statement>" [-l N]` | 执行 SQL (默认 limit 100) |
 | `children <block-id>` | 列子块 (编辑前定位) |
-| `sql "<statement>" [--limit N]` | 执行 SQL |
+| `backlinks <block-id> [--keyword]` | 查反链 |
+
+> `<doc>` 可以是 doc-id / 标题 / /完整路径; 组合示例: `siyuan cat $(siyuan which /工作/调课)`、`siyuan ls 工作 | siyuan grep 调课`。旧命令名 list/read/get/outline/search/notebooks 保留为别名。
 
 ### 写入/编辑
 | 命令 | 作用 |
@@ -76,9 +80,10 @@ siyuan raw export docx --id <id> --output <file>    # 导出 Word
 1. **创建文档优先用 `--parent-id`**: 思源 createDocWithMd 按 hpath 创建会重复建中间块, 封装层已用「createDocWithMd + moveDocs + 删中间块」三步自动处理, 直接用即可。
 2. **判断写入成功看 `read`, 不看 SQL**: block update/delete 后 SQL 查 `content` 可能滞后 (FlushTxQueue 异步索引, 秒级), `siyuan read <doc-id>` 直接读文件是准的。没刷新 `sleep 2-3` 再查。
 3. **文档名由 IAL `title` 决定, 不是 H1**: `document rename` 只改 IAL title 不改 H1 文本, 两者会不一致。要同步改 H1 需 `update-block <h1块id> --data '# 新标题'`。
-4. **notebook 参数支持中文名**: `siyuan list 工作` 自动解析成 notebook id。
+4. **notebook 参数支持中文名**: `siyuan ls 工作` 自动解析成 notebook id; 设 `SIYUAN_DEFAULT_NOTEBOOK` 后无参 `ls` 直接列该库。
 5. **move 封装命令同/跨笔记本都适用**: 底层 `document move` 只能跨笔记本, 封装层 `move` 自动走 HTTP moveDocs。
 6. **不知道参数时**: `siyuan raw-help <command>` 查帮助, 不要猜。
+7. **退出码**: 0=成功 1=业务错误 2=用法错误 3=配置错误 124=超时; 内核调用默认 60 秒超时 (`SIYUAN_TIMEOUT` 可调)。
 
 > 详细约定与源码依据: 见 [references/conventions.md](references/conventions.md)。
 
@@ -108,9 +113,8 @@ node scripts/av_ops.js export <avID>         # 导出 JSON (备份)
 
 ### 1. 写一篇笔记 (推荐 --parent-id)
 ```bash
-# 先查目标父目录块 id (type='d' 过滤文档块)
-PARENT=$(siyuan sql "SELECT id FROM blocks WHERE content='调课' AND type='d'" \
-  | python3 -c "import sys,json;print(json.load(sys.stdin)[0]['id'])")
+# 先定位目标父文档 id (用 which, 同名时用完整路径)
+PARENT=$(siyuan which /工作/调课)
 cat <<'EOF' | siyuan write --notebook 工作 --title "调课逻辑梳理" --parent-id "$PARENT"
 # 调课逻辑
 
@@ -122,19 +126,19 @@ EOF
 
 ### 2. 搜已有笔记 + 读内容
 ```bash
-siyuan search "调课"   # 输出: doc_id<TAB>hpath<TAB>notebook
-DOC=20250612202019-t9k2h1x   # 取第一列
-siyuan read "$DOC"           # 读 markdown 源 (准)
-siyuan children "$DOC"       # 看子块结构
+siyuan find "调课"        # 搜文档: doc_id<TAB>hpath<TAB>notebook
+DOC=$(siyuan which 调课)   # 定位文档 → doc id (同名多匹配时报错并列出候选)
+siyuan cat "$DOC"         # 读 markdown 源 (准)
+siyuan tree "$DOC"        # 标题树
+siyuan children "$DOC"    # 看子块结构
 ```
 
 ### 3. 编辑已有文档
 ```bash
-DOC=<doc-id>
+DOC=$(siyuan which 调课)
 siyuan append "$DOC" --data "## 新章节\n内容"
-# 改标题块 (先定位块 id)
-BID=$(siyuan sql "SELECT id FROM blocks WHERE root_id='$DOC' AND content='旧标题'" \
-  | python3 -c "import sys,json;print(json.load(sys.stdin)[0]['id'])")
+# 改标题块 (先定位块 id; sql 单列查询输出即 id)
+BID=$(siyuan sql "SELECT id FROM blocks WHERE root_id='$DOC' AND content='旧标题'" | head -1)
 siyuan update-block "$BID" --data "## 新标题"
 # 重命名文档 (只改文档名, H1 不变; 要同步改 H1 见 conventions.md §5)
 siyuan raw document rename --id "$DOC" --title "新文档名"
@@ -142,9 +146,8 @@ siyuan raw document rename --id "$DOC" --title "新文档名"
 
 ### 4. 定位目录 + 移动文档
 ```bash
-# 同名平级目录 (如 调课/调场) 需用 hpath 消歧
-NEW_PARENT=$(siyuan sql "SELECT id,hpath FROM blocks WHERE content='调场' AND type='d'" \
-  | python3 -c "import sys,json;r=json.load(sys.stdin);print(r[0]['id'])")
+# 同名平级目录 (如 调课/调场) 用完整路径消歧
+NEW_PARENT=$(siyuan which /调场)
 siyuan move <doc-id> --parent-id "$NEW_PARENT"
 ```
 
