@@ -8,6 +8,8 @@
 
 封装层 (`siyuan <cmd>`) 覆盖了高频操作 (文档读写、SQL、搜索等)。底层命令 (`siyuan raw <cmd>`) 是 kernel 完整能力, 封装层未覆盖时走 raw。
 
+封装命令支持三种输出模式 (互斥): 默认文本 (行式可管道) / `--json` (稳定字段) / `--markdown` (表格/列表/确认块, stdout 只含 markdown 可直接重定向 `.md` 或粘贴进思源)。`raw` 为原样透传, `--markdown` 无转换效果。
+
 ---
 
 ## notebook — 笔记本

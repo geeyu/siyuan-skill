@@ -28,13 +28,30 @@
 //   http-create <host> <port> <nbid> <path>
 //                             stdin=markdown → POST createDocWithMd → 新文档 id
 //   http-data                  http 响应 JSON → data 字段 (code!=0 时报错 exit 1)
-//   idx <i>                    JSON 数组 → 第 i 项 (原始 JSON)
-//   field <name>               JSON 对象 → 字段字符串值 (null/缺失输出空)
-//   field-json <name>          JSON 对象 → 字段原始 JSON
+//
+// Markdown 输出 (--markdown 模式, 框架统一路由; 笔记本名称映射走 env NB_NAMES):
+//   md-table <标签:字段...>    JSON 数组 → markdown 表格 (含表头分隔行)
+//   md-rows                    JSON 数组 → markdown 表格 (列 = 首行字段名)
+//   md-keyval                  document get JSON → markdown 两列键值表
+//   md-kv-list <标签:字段...>  JSON 数组 → markdown 键值列表 (boxName 查 NB_NAMES)
+//   tree-md [long]             outline JSON → 嵌套无序列表 (h 层级缩进)
+//   md-docs                    [{id,hPath,box}] → 文档 bullet (siyuan://docs 链接)
+//   md-grep [listonly]         search JSON → 按文档分组 bullet + 内容片段
+//   md-children                block children JSON → 块 bullet (siyuan://blocks 链接)
+//   md-backlinks               反链 JSON → 递归嵌套列表
+//   md-fence [lang]            stdin → fenced code block (head/tail 片段)
+//   md-ok-doc <id> <标题> [动作]   写命令确认块 (文档: id+标题+链接)
+//   md-ok-block <id> <动作>         写命令确认块 (块)
+//   md-ok-remove <id> <标题>        删除确认块 (无链接)
+//   md-ok-row <id> <动作>           数据库行确认块
+//   json-ok-doc / json-ok-block / json-ok-remove / json-ok-row
+//                             写命令稳定字段 JSON (id/action/link)
 //
 // AV (属性视图, SiYuan-Kernel 3.8.0):
 //   av-search-text             database search JSON → "avID\tavName\thPath" 行 (去重)
+//   av-list-md                 database search JSON → markdown 表格 (名称/avID/路径)
 //   av-keys-text               database keys JSON (3.7 数组 / 3.8 对象包装兼容) → "name\ttype\tkeyID" 行
+//   av-keys-rows               keys JSON → [{name,type,id}] (供 md-table)
 //   av-format                  value 对象 → 展示字符串 (统一格式, 输出/验证共用)
 //   av-rowcount                render JSON → view.rowCount
 //   av-merge                   [render,...] JSON 数组 → 合并后的 render 对象 (翻页拼接)
@@ -42,6 +59,7 @@
 //                              → [{keyID,name,type,value,expect}] (按字段类型自动嵌套)
 //   av-render <mode> [args]    stdin=render JSON; mode: rows [limit] [header] | rows-json [limit]
 //                              | row <itemID> | row-json <itemID> | verify | verify-json
+//                              | rows-md [limit] | row-md <itemID> | verify-md
 //                              | export | find-item <title> | row-at <i> | has-row <itemID>
 //                              | check-cell <itemID> <keyID> <expect>
 'use strict';
@@ -71,6 +89,19 @@ function unescapeHtml(s) {
 }
 function docFromSearch(r) {
   return { id: r.path.split('/').pop().replace(/\.sy$/, ''), hPath: r.hPath, box: r.box };
+}
+// markdown 单元格转义 (| → \|, 换行 → 空格)
+function escCell(v) {
+  return String(v ?? '').replace(/\|/g, '\\|').replace(/\r?\n/g, ' ');
+}
+// md 渲染: 笔记本 id → 名称 (env NB_NAMES="id<TAB>name" 多行; 查不到原样返回 id)
+function nbName(box) {
+  if (!process.env.NB_NAMES || !box) return box || '';
+  for (const line of process.env.NB_NAMES.split('\n')) {
+    const t = line.split('\t');
+    if (t[0] === box) return t.slice(1).join('\t');
+  }
+  return box;
 }
 
 switch (cmd) {
@@ -294,6 +325,176 @@ switch (cmd) {
   case 'head-json':
     console.log(JSON.stringify({ id: args[0], mode: args[1], lines: args[2], markdown: stdin }));
     break;
+  case 'md-rows': {
+    // JSON 数组 → markdown 表格 (列 = 首行字段名, 含表头分隔行); 空数组无输出
+    const d = parse();
+    if (!d.length) break;
+    const fields = Object.keys(d[0]);
+    console.log('| ' + fields.join(' | ') + ' |');
+    console.log('|' + fields.map(() => ' --- ').join('|') + '|');
+    for (const r of d) console.log('| ' + fields.map((f) => escCell(r[f])).join(' | ') + ' |');
+    break;
+  }
+  case 'md-kv-list': {
+    // JSON 数组 → markdown 键值列表 ("- 标签: `值`" 每对象 N 行, 对象间空行)
+    //   字段 "boxName" 特殊: 从 r.box 查笔记本名称 (env NB_NAMES)
+    const cols = args.map((a) => {
+      const i = a.indexOf(':');
+      return i > 0 ? { label: a.slice(0, i), field: a.slice(i + 1) } : { label: a, field: a };
+    });
+    const rows = parse();
+    rows.forEach((r, idx) => {
+      if (idx > 0) console.log('');
+      for (const c of cols) {
+        const raw = c.field === 'boxName' ? nbName(r.box) : r[c.field];
+        console.log('- ' + c.label + ': `' + String(raw ?? '').replace(/`/g, "'") + '`');
+      }
+    });
+    break;
+  }
+  case 'tree-md': {
+    // outline JSON → 嵌套无序列表 (h 层级 → 2 空格缩进); long 附块 id 链接
+    const long = args[0] === 'long';
+    for (const x of parse()) {
+      const st = x.subType || '';
+      const lvl = (st.length > 1 && st[0] === 'h') ? parseInt(st.slice(1), 10) : 1;
+      const name = unescapeHtml(x.name || '');
+      let line = '  '.repeat(Math.max(0, lvl - 1)) + '- ' + name;
+      if (long && x.id) line += ' ([`' + x.id + '`](siyuan://blocks/' + x.id + '))';
+      console.log(line);
+    }
+    break;
+  }
+  case 'md-docs': {
+    // [{id,hPath,box}] → "- [标题](siyuan://docs/<id>) — `hPath` · 笔记本 `名称`"
+    for (const d of parse()) {
+      const title = (d.hPath || '').split('/').filter(Boolean).pop() || d.id;
+      console.log('- [' + title + '](siyuan://docs/' + d.id + ') — `' + (d.hPath || '') + '` · 笔记本 `' + nbName(d.box) + '`');
+    }
+    break;
+  }
+  case 'md-ls-docs': {
+    // document list JSON → markdown 表格 (env NB_NAME=笔记本名); [long] 附子文档/大小/时间
+    const long = args[0] === 'long';
+    const nb = process.env.NB_NAME || '';
+    const rows = parse();
+    if (!rows.length) break;
+    const header = long ? ['名称', 'ID', '笔记本', '子文档', '大小', '修改时间'] : ['名称', 'ID', '笔记本'];
+    console.log('| ' + header.join(' | ') + ' |');
+    console.log('|' + header.map(() => ' --- ').join('|') + '|');
+    for (const x of rows) {
+      const line = long
+        ? [x.name ?? '', x.id ?? '', nb, x.subFileCount ?? 0, x.hSize ?? '', x.hMtime ?? '']
+        : [x.name ?? '', x.id ?? '', nb];
+      console.log('| ' + line.map(escCell).join(' | ') + ' |');
+    }
+    break;
+  }
+  case 'md-grep': {
+    // search JSON {blocks:[]} → 按文档分组: 文档 bullet + 内容片段嵌套 bullet
+    //   [listonly] 只列文档 (等价 -l)
+    const listonly = args[0] === 'listonly';
+    const groups = new Map();
+    for (const b of parse().blocks || []) {
+      const rid = b.rootID || b.id;
+      if (!groups.has(rid)) groups.set(rid, { hPath: b.hPath || '', box: b.box || '', items: [] });
+      if (!listonly) {
+        const c = String(b.fcontent || '').replace(/<\/?mark>/g, '').replace(/\s*\n\s*/g, ' ').trim();
+        if (c) groups.get(rid).items.push(c);
+      }
+    }
+    for (const [rid, g] of groups) {
+      const title = g.hPath.split('/').filter(Boolean).pop() || rid;
+      console.log('- [' + title + '](siyuan://docs/' + rid + ') — `' + g.hPath + '` · 笔记本 `' + nbName(g.box) + '`');
+      for (const c of g.items) console.log('  - ' + c.slice(0, 120));
+    }
+    break;
+  }
+  case 'md-children': {
+    // block children JSON → "- `type` 内容片段 ([id](siyuan://blocks/<id>))"
+    for (const b of parse()) {
+      if (b && typeof b === 'object' && b.id) {
+        const c = String(b.content || '').replace(/\n/g, ' ').slice(0, 60);
+        console.log('- `' + (b.type || '') + '` ' + c + ' ([`' + b.id + '`](siyuan://blocks/' + b.id + '))');
+      }
+    }
+    break;
+  }
+  case 'md-backlinks': {
+    // 反链 JSON → 递归嵌套列表 (内容 bullet, 子反链缩进)
+    const walk = (o, depth) => {
+      if (Array.isArray(o)) { o.forEach((x) => walk(x, depth)); return; }
+      if (o && typeof o === 'object') {
+        if (o.content !== undefined && o.id) {
+          const c = String(o.content).replace(/\n/g, ' ').slice(0, 60);
+          console.log('  '.repeat(depth) + '- ' + c + ' ([`' + o.id + '`](siyuan://blocks/' + o.id + '))');
+          depth += 1;
+        }
+        for (const v of Object.values(o)) walk(v, depth);
+      }
+    };
+    walk(parse(), 0);
+    break;
+  }
+  case 'md-fence': {
+    // stdin → fenced code block (head/tail 片段标记; 原样包裹)
+    const lang = args[0] || '';
+    console.log('```' + lang);
+    process.stdout.write(stdin.replace(/\n+$/, '') + '\n```\n');
+    break;
+  }
+  case 'md-ok-doc': {
+    // <id> <标题> [动作] → 文档写入确认块 (blockquote: 标题链接 + 文档 ID)
+    const [id, title, verb] = args;
+    console.log('> ✅ 已' + (verb || '写入') + '文档 [' + (title || id) + '](siyuan://docs/' + id + ')');
+    console.log('> - 文档 ID: `' + id + '`');
+    console.log('> - 标题: ' + (title || ''));
+    break;
+  }
+  case 'md-ok-block': {
+    // <id> <动作> → 块写入确认块
+    const [id, verb] = args;
+    console.log('> ✅ 已' + (verb || '操作') + '块 [' + id + '](siyuan://blocks/' + id + ')');
+    break;
+  }
+  case 'md-ok-remove': {
+    // <id> <标题> → 文档删除确认块 (无链接)
+    const [id, title] = args;
+    console.log('> ✅ 已删除文档 ' + (title || id) + ' (`' + id + '`)');
+    break;
+  }
+  case 'md-ok-row': {
+    // <id> <动作> → 数据库行确认块
+    const [id, verb] = args;
+    console.log('> ✅ 已' + (verb || '操作') + '行 `' + id + '`');
+    break;
+  }
+  case 'json-ok-doc': {
+    // <id> <标题> [动作] → 写命令稳定字段 {id,title,link[,action]}
+    const [id, title, action] = args;
+    const o = { id, title: title || '', link: 'siyuan://docs/' + id };
+    if (action) o.action = action;
+    console.log(JSON.stringify(o));
+    break;
+  }
+  case 'json-ok-block': {
+    // <id> <动作> → 块操作稳定字段 {id,action,link}
+    const [id, action] = args;
+    console.log(JSON.stringify({ id, action: action || '', link: 'siyuan://blocks/' + id }));
+    break;
+  }
+  case 'json-ok-remove': {
+    // <id> <标题> → 删除稳定字段 {id,title,action}
+    const [id, title] = args;
+    console.log(JSON.stringify({ id, title: title || '', action: 'remove' }));
+    break;
+  }
+  case 'json-ok-row': {
+    // <id> <动作> → 数据库行稳定字段 {id,action}
+    const [id, action] = args;
+    console.log(JSON.stringify({ id, action: action || '' }));
+    break;
+  }
   case 'http-create': {
     const [host, port, nbid, path] = args;
     const body = JSON.stringify({ notebook: nbid, path, markdown: stdin });
@@ -344,6 +545,28 @@ switch (cmd) {
       seen.add(d.avID);
       console.log([d.avID, d.avName, d.hPath || ''].join('\t'));
     }
+    break;
+  }
+  case 'av-list-md': {
+    // database search JSON → markdown 表格 (按 avID 去重): 名称 | avID | 路径
+    const seen = new Set();
+    const rows = [];
+    for (const d of parse()) {
+      if (seen.has(d.avID)) continue;
+      seen.add(d.avID);
+      rows.push([d.avName ?? '', d.avID ?? '', d.hPath ?? '']);
+    }
+    if (!rows.length) break;
+    console.log('| 名称 | avID | 路径 |');
+    console.log('| --- | --- | --- |');
+    for (const r of rows) console.log('| ' + r.map(escCell).join(' | ') + ' |');
+    break;
+  }
+  case 'av-keys-rows': {
+    // keys JSON (3.8 {id,name,keys:[]} 或旧数组) → [{name,type,id}] (供 md-table)
+    const d = parse();
+    const keys = Array.isArray(d) ? d : (d.keys || []);
+    console.log(JSON.stringify(keys.map((k) => ({ name: k.name ?? '', type: k.type ?? '', id: k.id ?? '' }))));
     break;
   }
   case 'av-keys-text': {
@@ -597,6 +820,44 @@ function avRenderMode(d, mode, args) {
       console.log(JSON.stringify(rowOf(r)));
       break;
     }
+    case 'rows-md': {
+      // markdown 表格: itemID | 标题 | 各字段 (列 = 可见字段)
+      const limit = args[0] ? parseInt(args[0], 10) : 0;
+      const list = limit > 0 ? rows.slice(0, limit) : rows;
+      const objs = list.map((r) => rowOf(r));
+      if (!objs.length) break;
+      const header = ['itemID', '标题'];
+      for (const col of visCols) if (col.type !== 'block') header.push(col.name);
+      console.log('| ' + header.join(' | ') + ' |');
+      console.log('|' + header.map(() => ' --- ').join('|') + '|');
+      for (const o of objs) {
+        const line = [o.itemID, o.title];
+        for (const col of visCols) if (col.type !== 'block') line.push(o.fields[col.name] ?? '');
+        console.log('| ' + line.map(escCell).join(' | ') + ' |');
+      }
+      break;
+    }
+    case 'row-md': {
+      // markdown 键值表: 项目 | 值 (行 ID/标题/每字段)
+      const r = rows.find((x) => x.id === args[0]);
+      if (!r) {
+        console.error('av: 找不到行 ' + args[0]);
+        process.exit(1);
+      }
+      const o = rowOf(r);
+      console.log('| 项目 | 值 |');
+      console.log('| --- | --- |');
+      console.log('| 行 ID | `' + o.itemID + '` |');
+      console.log('| 标题 | ' + escCell(o.title || '(无标题)') + ' |');
+      for (const col of visCols) {
+        if (col.type === 'block') continue;
+        console.log('| ' + escCell(col.name) + ' | ' + escCell(o.fields[col.name] ?? '') + ' |');
+      }
+      break;
+    }
+    case 'verify-md':
+      avRenderMode(d, 'rows-md', ['0']);
+      break;
     case 'verify':
       for (const r of rows) printRow(r);
       break;

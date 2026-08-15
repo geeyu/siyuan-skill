@@ -4,7 +4,9 @@
 # 设计契约 (所有命令遵守):
 #   退出码: 0=成功, 1=业务/运行时错误, 2=用法错误, 3=配置错误, 124=超时
 #   错误:   写 stderr, 格式 "siyuan <命令>: <原因>", 可操作 (带建议)
-#   输出:   默认人类可读文本 (行式, 可被其他命令消费); --json 输出稳定字段
+#   输出:   默认人类可读文本 (行式, 可被其他命令消费); --json 输出稳定字段;
+#           --markdown 输出 markdown (表格/列表/确认块, stdout 只含 markdown 可重定向)
+#   模式:   --json 与 --markdown 互斥 (同时给报用法错误); 由 sy_mode_arg 统一解析
 #   环境:   SIYUAN_KERNEL / SIYUAN_WORKSPACE / SIYUAN_FORMAT / SIYUAN_TIMEOUT /
 #           SIYUAN_DEFAULT_NOTEBOOK / SIYUAN_API_HOST / SIYUAN_API_PORT
 
@@ -47,6 +49,11 @@ SY_JSON_DEFAULT=0
 # shellcheck disable=SC2034
 [[ "$SIYUAN_FORMAT" == "json" ]] && SY_JSON_DEFAULT=1
 
+# 输出模式 (框架统一路由): text | json | markdown
+#   sy_dispatch 每次调用前按 SIYUAN_FORMAT 初始化; 命令参数循环用 sy_mode_arg 消费标志
+# shellcheck disable=SC2034 # 跨文件使用 (cmd-query.sh / cmd-misc.sh / cmd-write.sh / cmd-av.sh)
+SY_MODE=text
+
 # ---------------------------------------------------------------------------
 # 命令注册表 (bash 3.2 无关联数组, 用并行数组)
 # ---------------------------------------------------------------------------
@@ -70,6 +77,9 @@ sy_register() {
 sy_dispatch() {
   local cmd="$1"
   shift
+  # 输出模式初始化 (每次调用重置; SIYUAN_FORMAT=json 时默认 json)
+  SY_MODE=text
+  [[ "$SIYUAN_FORMAT" == "json" ]] && SY_MODE=json
   local i
   for i in "${!SY_CMD_NAMES[@]}"; do
     if [[ "${SY_CMD_NAMES[$i]}" == "$cmd" ]]; then
@@ -88,6 +98,31 @@ sy_die() { # sy_die <退出码> <原因> [建议]
   echo "siyuan $SY_CMD_NAME: $msg" >&2
   [[ -n "$sug" ]] && echo "  建议: $sug" >&2
   exit "$code"
+}
+
+# ---------------------------------------------------------------------------
+# 输出模式标志 (框架统一路由; 各命令参数循环调用, 消费 --json / --markdown)
+#   sy_mode_arg <arg>: 命中模式标志返回 0 (设置 SY_MODE); 其他参数返回 255
+#   互斥: --json 与 --markdown 同时出现 → 用法错误 (退出 2)
+# ---------------------------------------------------------------------------
+sy_mode_arg() {
+  case "$1" in
+  --json)
+    if [[ "$SY_MODE" == "markdown" ]]; then
+      sy_die 2 "$SY_CMD_NAME: --json 与 --markdown 不能同时使用" "输出模式三选一: 默认文本 / --json / --markdown"
+    fi
+    SY_MODE=json
+    return 0
+    ;;
+  --markdown)
+    if [[ "$SY_MODE" == "json" ]]; then
+      sy_die 2 "$SY_CMD_NAME: --json 与 --markdown 不能同时使用" "输出模式三选一: 默认文本 / --json / --markdown"
+    fi
+    SY_MODE=markdown
+    return 0
+    ;;
+  esac
+  return 255
 }
 
 # ---------------------------------------------------------------------------
@@ -168,6 +203,48 @@ sy_kernel_or_die() {
   elif [[ $rc -ne 0 ]]; then
     sy_die 1 "$ctx: 内核调用失败 (见上方内核错误)" "运行 'siyuan raw-help $ctx' 查看底层命令参数"
   fi
+}
+
+# 内核调用 + 非零即报错, stdout 捕获 (--json/--markdown 模式需要抑制内核原始输出时用)
+#   sy_kernel_capture <上下文> <args...> — stdout: 内核输出 (已捕获); 失败统一 sy_die
+sy_kernel_capture() {
+  local ctx="$1"
+  shift
+  local out rc=0
+  out="$(sy_kernel "$@")" || rc=$?
+  if [[ $rc -eq 124 ]]; then
+    sy_die 124 "$ctx: 内核 ${SIYUAN_TIMEOUT} 秒无响应" "重试, 或调大 SIYUAN_TIMEOUT 环境变量"
+  elif [[ $rc -ne 0 ]]; then
+    sy_die 1 "$ctx: 内核调用失败 (见上方内核错误)" "运行 'siyuan raw-help $ctx' 查看底层命令参数"
+  fi
+  printf '%s' "$out"
+}
+
+# ---------------------------------------------------------------------------
+# markdown 输出助手 (框架统一路由; 渲染逻辑在 fmt.js, 这里只准备数据)
+# ---------------------------------------------------------------------------
+
+# 笔记本 id→名称 映射行 (md 渲染用; 一次内核调用)
+#   sy_nb_names <ctx> -> stdout: "id<TAB>name" 每行 (供 fmt.js NB_NAMES 环境变量)
+sy_nb_names() {
+  local ctx="$1"
+  sy_json "$ctx" notebook list | "$SY_NODE" "$SY_LIB_DIR/fmt.js" tsv id name || return $?
+}
+
+# 单个笔记本 id → 名称 (查不到原样返回 id)
+sy_nb_name() { # <ctx> <box-id>
+  local ctx="$1" box="$2" out name
+  out="$(sy_nb_names "$ctx")" || return $?
+  name="$(printf '%s\n' "$out" | awk -F '\t' -v id="$box" '$1==id {print $2; exit}')"
+  echo "${name:-$box}"
+}
+
+# doc id → 标题 (hpath 末段); 查不到输出空
+sy_doc_title() { # <ctx> <doc-id>
+  local ctx="$1" id="$2" meta hpath
+  meta="$(sy_doc_meta "$ctx" "$id")" || return $?
+  hpath="${meta%%$'\t'*}"
+  [[ -n "$hpath" ]] && echo "${hpath##*/}"
 }
 
 # ---------------------------------------------------------------------------
