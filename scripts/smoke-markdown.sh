@@ -5,9 +5,16 @@ set -u
 cd "$(dirname "$0")/.."
 export PATH="$HOME/.local/share/fnm/node-versions/v22.22.0/installation/bin:$PATH"
 S="$(pwd)/bin/siyuan"
-PASS=0; FAIL=0
-ok()  { PASS=$((PASS+1)); echo "  ✓ $1"; }
-bad() { FAIL=$((FAIL+1)); echo "  ✗ $1"; }
+PASS=0
+FAIL=0
+ok() {
+  PASS=$((PASS + 1))
+  echo "  ✓ $1"
+}
+bad() {
+  FAIL=$((FAIL + 1))
+  echo "  ✗ $1"
+}
 
 DOC=20260708113326-ktl9bis
 
@@ -71,8 +78,8 @@ echo "== 写命令确认块 (需 serve 6806) =="
 if curl -s -m 2 -X POST http://127.0.0.1:6806/api/system/version >/dev/null 2>&1; then
   NEW="$($S write --notebook 工作 --title "wf-w1-6冒烟" --markdown <<<'# t')"
   NID="$(echo "$NEW" | grep -oE '[0-9]{14}-[a-z0-9]{6,8}' | head -1)"
-  [[ "$NEW" == *已写入文档* && "$NEW" == *siyuan://docs/* && -n "$NID" ]] \
-    && ok "write --markdown 确认块" || bad "write --markdown [$NEW]"
+  [[ "$NEW" == *已写入文档* && "$NEW" == *siyuan://docs/* && -n "$NID" ]] &&
+    ok "write --markdown 确认块" || bad "write --markdown [$NEW]"
   WJ="$($S write --notebook 工作 --title 'wf-w1-6冒烟2' --json <<<'x')"
   [[ "$WJ" == *'"id"'* ]] && ok "write --json 稳定字段" || bad "write --json [$WJ]"
   AP="$($S append "$NID" --data '## a' --markdown)"
@@ -102,8 +109,10 @@ else
 fi
 
 echo "== 互斥与契约 =="
-"$S" ls --json --markdown >/dev/null 2>&1; r1=$?
-"$S" ls --markdown --json >/dev/null 2>&1; r2=$?
+"$S" ls --json --markdown >/dev/null 2>&1
+r1=$?
+"$S" ls --markdown --json >/dev/null 2>&1
+r2=$?
 [[ $r1 -eq 2 && $r2 -eq 2 ]] && ok "--json/--markdown 互斥 rc=2 (两种顺序)" || bad "互斥 rc=$r1/$r2"
 raw_out="$($S raw --markdown notebook list 2>/dev/null | head -1)"
 [[ "$raw_out" == *ID*NAME* ]] && ok "raw --markdown 原样透传" || bad "raw --markdown [$raw_out]"
