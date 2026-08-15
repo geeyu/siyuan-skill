@@ -46,6 +46,13 @@ shell 风格命令集 (类似 Linux 命令操作思源笔记): 默认人类可�
 ### 写入/编辑
 | 命令 | 作用 |
 |------|------|
+| `touch --notebook <nb> --title <t> [--parent <pid> \| --path <hpath>] [--file\|stdin]` | 建文档 (默认笔记本根; createDocWithMd 三步语义无中间块残留), 返回 id |
+| `edit <doc> (--append\|--prepend\|--update <块id>\|--replace) <text> [--file\|stdin]` | 统一编辑入口: 追加/开头插入/改块/整篇替换, 返回目标 id |
+| `mv <doc> --to <父id> [--notebook <nb>]` | 移动文档 (同/跨笔记本), 返回文档 id |
+| `cp <doc> [--to <父id>]` | 复制文档 (duplicate), 返回新副本 id |
+| `rm <doc>` | 删文档 (接受 id/标题/路径引用), 返回文档 id |
+| `diff <docA> <docB> [diff 参数...]` | 对比两文档 markdown (统一 diff 格式; 退出码 0=同 1=异) |
+| `rename <doc> <新标题>` | 重命名 (IAL title + H1 同步, 避免不一致), 返回文档 id |
 | `write --notebook <nb> --title <t> [--parent-id <pid> \| --path <hpath>] [--file\|stdin]` | 建文档 (推荐 --parent-id), 返回 id |
 | `append <doc-id> [--data\|--file\|stdin]` | 追加到文档末尾 |
 | `insert-block --previous <bid>\|--parent <doc-id> [--data]` | 插入块 |
@@ -53,9 +60,9 @@ shell 风格命令集 (类似 Linux 命令操作思源笔记): 默认人类可�
 | `replace-doc <doc-id> [--data\|--file\|stdin]` | 替换整篇文档 (删旧写新, 保留标题) |
 | `delete-block <block-id>` | 删除块 |
 | `move <doc-id> --parent-id <pid>` | 移动文档到另一父文档下 |
-| `remove <doc-id>` | 删文档 |
+| `remove <doc-id>` | 删文档 (id 级) |
 
-内容传入统一支持 `--data <字符串>` / `--file <文件>` / 管道 stdin。
+内容传入统一支持 `--data <字符串>` / `--file <文件>` / 管道 stdin; 每次写操作返回目标 id (可 `$(siyuan touch ...)` 直接取用)。
 
 ### 底层透传 (封装层未覆盖的完整能力)
 | 命令 | 作用 |
@@ -77,13 +84,13 @@ siyuan raw export docx --id <id> --output <file>    # 导出 Word
 
 ## 核心约定 (高频必读)
 
-1. **创建文档优先用 `--parent-id`**: 思源 createDocWithMd 按 hpath 创建会重复建中间块, 封装层已用「createDocWithMd + moveDocs + 删中间块」三步自动处理, 直接用即可。
-2. **判断写入成功看 `read`, 不看 SQL**: block update/delete 后 SQL 查 `content` 可能滞后 (FlushTxQueue 异步索引, 秒级), `siyuan read <doc-id>` 直接读文件是准的。没刷新 `sleep 2-3` 再查。
-3. **文档名由 IAL `title` 决定, 不是 H1**: `document rename` 只改 IAL title 不改 H1 文本, 两者会不一致。要同步改 H1 需 `update-block <h1块id> --data '# 新标题'`。
+1. **创建文档优先用 `--parent-id`/`--parent`**: 思源 createDocWithMd 按 hpath 创建会重复建中间块, 封装层已用「createDocWithMd + moveDocs + 删中间块」三步自动处理 (HTTP 不可用时自动回退 CLI `document create`, 无中间块问题), 直接用即可。
+2. **判断写入成功看 `read`, 不看 SQL**: block update/delete 后 SQL 查 `content` 可能滞后 (FlushTxQueue 异步索引, 秒级), `siyuan cat <doc-id>` 直接读文件是准的。没刷新 `sleep 2-3` 再查。
+3. **文档名由 IAL `title` 决定, 不是 H1**: `rename` 命令已自动同步 (IAL title + 第一个 H1 子块文本); 底层 `document rename` 只改 IAL title 不改 H1 文本, 两者会不一致。⚠ 不要对文档块本身做 `block update` (会把整篇文档内容替换掉)。
 4. **notebook 参数支持中文名**: `siyuan ls 工作` 自动解析成 notebook id; 设 `SIYUAN_DEFAULT_NOTEBOOK` 后无参 `ls` 直接列该库。
-5. **move 封装命令同/跨笔记本都适用**: 底层 `document move` 只能跨笔记本, 封装层 `move` 自动走 HTTP moveDocs。
+5. **mv/cp 同/跨笔记本都适用**: `mv <doc> --to <父id>` 自动取父文档所在笔记本, 跨库无需额外参数; 底层 `document move` 只能跨笔记本, 封装层自动处理。
 6. **不知道参数时**: `siyuan raw-help <command>` 查帮助, 不要猜。
-7. **退出码**: 0=成功 1=业务错误 2=用法错误 3=配置错误 124=超时; 内核调用默认 60 秒超时 (`SIYUAN_TIMEOUT` 可调)。
+7. **退出码**: 0=成功 1=业务错误 2=用法错误 3=配置错误 124=超时; 内核调用默认 60 秒超时 (`SIYUAN_TIMEOUT` 可调)。`diff` 例外: 0=相同 1=有差异 (同系统 diff)。
 
 > 详细约定与源码依据: 见 [references/conventions.md](references/conventions.md)。
 
@@ -133,15 +140,20 @@ siyuan tree "$DOC"        # 标题树
 siyuan children "$DOC"    # 看子块结构
 ```
 
-### 3. 编辑已有文档
+### 3. 编辑已有文档 (shell 风格)
 ```bash
 DOC=$(siyuan which 调课)
-siyuan append "$DOC" --data "## 新章节\n内容"
-# 改标题块 (先定位块 id; sql 单列查询输出即 id)
-BID=$(siyuan sql "SELECT id FROM blocks WHERE root_id='$DOC' AND content='旧标题'" | head -1)
-siyuan update-block "$BID" --data "## 新标题"
-# 重命名文档 (只改文档名, H1 不变; 要同步改 H1 见 conventions.md §5)
-siyuan raw document rename --id "$DOC" --title "新文档名"
+siyuan edit "$DOC" --append "## 新章节
+内容"          # 追加 (返回文档 id)
+siyuan edit "$DOC" --prepend "- 开头要点"          # 开头插入
+BID=$(siyuan children "$DOC" | awk -F'\t' '$2=="p"{print $1;exit}')
+siyuan edit "$DOC" --update "$BID" "新段落文本"     # 改块 (返回块 id)
+echo '# 整篇新内容' | siyuan edit "$DOC" --replace  # 整篇替换
+siyuan rename "$DOC" "新文档名"                     # 改名 (IAL + H1 同步)
+siyuan diff "$DOC" "$(siyuan which 另一篇)"         # 对比两文档 (rc 1=有差异)
+siyuan mv "$DOC" --to "$(siyuan which /目标目录)"   # 移动
+siyuan cp "$DOC" --to "$(siyuan which /目标目录)"   # 复制
+siyuan rm "$DOC"                                    # 删除
 ```
 
 ### 4. 定位目录 + 移动文档

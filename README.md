@@ -24,7 +24,8 @@ echo 'alias siyuan=~/.pi/skills/siyuan/bin/siyuan' >> ~/.zshrc
   - `bin/lib/framework.sh` — 命令注册表 / 内核调用(超时) / 统一错误与退出码 / JSON 助手
   - `bin/lib/cmd-query.sh` — 查询命令组 (ls/tree/cat/head/tail/find/grep/which/stat)
   - `bin/lib/cmd-misc.sh` — sql/raw/raw-help/children/backlinks
-  - `bin/lib/cmd-write.sh` — write/append/insert-block/update-block/delete-block/replace-doc/move/remove
+  - `bin/lib/cmd-write.sh` — 底层写入 (write/append/insert-block/update-block/delete-block/replace-doc/move/remove) + 共享写入助手
+  - `bin/lib/cmd-edit.sh` — shell 风格编辑命令组 (touch/edit/mv/cp/rm/diff/rename)
   - `bin/lib/fmt.js` — node 数据格式化助手 (JSON→TSV/文本/稳定字段)
 
 ## 配置
@@ -56,6 +57,13 @@ siyuan which 标题                       # 定位文档 → doc id
 siyuan stat <doc>                       # 文档元信息
 siyuan sql "SELECT ..."                 # SQL 查询
 siyuan write --notebook 工作 --title "T" --parent-id <pid>   # 建文档
+siyuan touch --notebook 工作 --title "T" --parent <pid>       # shell 风格建文档
+siyuan edit <doc> --append "内容"                            # 追加 (--prepend/--update/--replace)
+siyuan rename <doc> "新标题"                                 # 改名 (IAL + H1 同步)
+siyuan mv <doc> --to <parent-id>                             # 移动 (同/跨笔记本)
+siyuan cp <doc> --to <parent-id>                             # 复制
+siyuan diff <docA> <docB>                                    # 对比两文档 (统一 diff)
+siyuan rm <doc>                                              # 删除
 siyuan raw database search "库名"       # 底层透传 (见 references/database.md)
 ```
 

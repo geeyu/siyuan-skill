@@ -32,6 +32,7 @@ fi
 source "$BIN_DIR/lib/cmd-query.sh"
 source "$BIN_DIR/lib/cmd-misc.sh"
 source "$BIN_DIR/lib/cmd-write.sh"
+source "$BIN_DIR/lib/cmd-edit.sh"
 
 sy_register ls              cmd_ls            list notebooks nb
 sy_register tree            cmd_tree          outline
@@ -52,7 +53,14 @@ sy_register update-block    cmd_update_block
 sy_register delete-block    cmd_delete_block
 sy_register replace-doc     cmd_replace_doc
 sy_register move            cmd_move
-sy_register remove          cmd_remove        rm
+sy_register remove          cmd_remove
+sy_register touch           cmd_touch
+sy_register edit            cmd_edit
+sy_register mv              cmd_mv
+sy_register cp              cmd_cp
+sy_register rm              cmd_rm
+sy_register diff            cmd_diff
+sy_register rename          cmd_rename
 sy_register raw             cmd_raw
 sy_register raw-help        cmd_raw_help
 sy_register help            cmd_help
@@ -82,7 +90,18 @@ siyuan — 思源笔记命令行 (基于 SiYuan-Kernel 3.8+, shell 风格)
   children <block-id> [--json]        子块列表 (编辑前定位)
   backlinks <block-id> [--keyword <kw>] [--json]  反链
 
-写入/编辑:
+写入/编辑 (shell 风格, 每次写操作返回目标 id):
+  touch --notebook <nb> --title <t> [--parent <pid>|--path <hpath>] [--file|stdin]
+                                      建文档 (默认笔记本根; createDocWithMd 三步语义, 无中间块残留)
+  edit <doc> (--append|--prepend|--update <block-id>|--replace) <text> [--file|stdin]
+                                      统一编辑入口: 追加/开头插入/改块/整篇替换
+  mv <doc> --to <parent-id> [--notebook <nb>]  移动文档 (同/跨笔记本, 输出文档 id)
+  cp <doc> [--to <parent-id>]         复制文档 (duplicate, 输出新副本 id)
+  rm <doc>                            删除文档 (接受 id/标题/路径引用, 输出文档 id)
+  diff <docA> <docB> [diff 参数...]    对比两文档 markdown (统一 diff 格式; 退出码 0=同 1=异)
+  rename <doc> <新标题>                重命名 (IAL title + H1 同步, 输出文档 id)
+
+底层写入 (id 级):
   write --notebook <nb> --title <t> [--parent-id <pid>|--path <hpath>] [--file|stdin]
                                       建文档 (推荐 --parent-id), 返回新文档 id
   append <doc-id> [--data|--file|stdin]   追加到文档末尾
@@ -160,6 +179,59 @@ EOF
     sql)      cat <<'EOF'
 用法: siyuan sql "<语句>" [-l N] [-H] [--json]
   SQL 查询 (透传内核, 默认 limit 100); 文本=TSV 行 (无表头可组合, -H 加表头)
+EOF
+;;
+    touch)    cat <<'EOF'
+用法: siyuan touch --notebook <nb> --title <t> [--parent <pid> | --path <hpath>] [--file <md>|stdin]
+  新建文档 (默认笔记本根目录); 内容可选 (空文档 = 空文件语义)
+  --parent <pid>  建到该父文档下 (父文档 id/标题/路径)
+  --path <hpath>  按人类可读路径建 (如 /供应链); HTTP 不可用时需该路径已存在
+  内部: createDocWithMd 三步语义 (建/移/删中间块), HTTP 不可用自动回退 CLI
+  输出: 新文档 id
+EOF
+;;
+    edit)     cat <<'EOF'
+用法: siyuan edit <doc> (--append|--prepend|--update <block-id>|--replace) <text> [--file <f>|stdin]
+  统一编辑入口, 内部路由:
+    --append <text>      追加到文档末尾
+    --prepend <text>     插入到文档开头
+    --update <block-id> <text>  改指定块内容 (块 id 用 'siyuan children <doc>' 定位)
+    --replace <text>     整篇替换 (删旧写新, 保留标题)
+  文本可省略改从 --file / 管道 stdin 传入 (中文/引号内容推荐)
+  输出: 目标 id (append/prepend/replace = 文档 id, update = 块 id)
+EOF
+;;
+    mv)       cat <<'EOF'
+用法: siyuan mv <doc> --to <parent-id> [--notebook <nb>] | siyuan mv <doc> --notebook <nb>
+  移动文档 (同/跨笔记本均支持)
+  --to <parent-id>   移到该文档下 (自动取父文档所在笔记本)
+  --notebook <nb>    显式指定目标笔记本 (无 --to 时移到该库根目录)
+  输出: 被移动的文档 id
+EOF
+;;
+    cp)       cat <<'EOF'
+用法: siyuan cp <doc> [--to <parent-id>]
+  复制文档 (duplicate, 同目录生成 "标题 (Duplicated ...)" 副本)
+  --to <parent-id>   复制后移到该文档下 (可跨笔记本)
+  输出: 新副本的文档 id
+EOF
+;;
+    rm)       cat <<'EOF'
+用法: siyuan rm <doc-id|标题|/路径>
+  删除文档 (引用可为 id/标题/完整路径); 输出被删除的文档 id
+EOF
+;;
+    diff)     cat <<'EOF'
+用法: siyuan diff <docA> <docB> [diff 参数...]
+  对比两文档 markdown (内部 cat + diff); 默认 -u 统一 diff 格式
+  额外参数透传给系统 diff (如 -w 忽略空白, -U 5 上下文行数)
+  退出码同 diff: 0=相同 1=有差异 2=错误
+EOF
+;;
+    rename)   cat <<'EOF'
+用法: siyuan rename <doc-id|标题|/路径> <新标题>
+  重命名文档: IAL title (文档名) + H1 子块文本同步, 避免 title/H1 不一致
+  输出: 文档 id
 EOF
 ;;
     children|backlinks|write|append|insert-block|update-block|delete-block|replace-doc|move|remove|raw|raw-help)
