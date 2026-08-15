@@ -32,16 +32,8 @@ fi
 source "$BIN_DIR/lib/cmd-query.sh"
 source "$BIN_DIR/lib/cmd-misc.sh"
 source "$BIN_DIR/lib/cmd-write.sh"
-<<<<<<< HEAD
-<<<<<<< HEAD
-source "$BIN_DIR/lib/cmd-edit.sh"
-=======
-source "$BIN_DIR/lib/cmd-av.sh"
->>>>>>> gittree-wf-siyuan-w1-3
-=======
 source "$BIN_DIR/lib/cmd-edit.sh"
 source "$BIN_DIR/lib/cmd-av.sh"
->>>>>>> gittree-wf-siyuan-w1-5
 
 sy_register ls              cmd_ls            list notebooks nb
 sy_register tree            cmd_tree          outline
@@ -62,10 +54,6 @@ sy_register update-block    cmd_update_block
 sy_register delete-block    cmd_delete_block
 sy_register replace-doc     cmd_replace_doc
 sy_register move            cmd_move
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
->>>>>>> gittree-wf-siyuan-w1-5
 sy_register remove          cmd_remove
 sy_register touch           cmd_touch
 sy_register edit            cmd_edit
@@ -74,14 +62,7 @@ sy_register cp              cmd_cp
 sy_register rm              cmd_rm
 sy_register diff            cmd_diff
 sy_register rename          cmd_rename
-<<<<<<< HEAD
-=======
-sy_register remove          cmd_remove        rm
 sy_register av               cmd_av
->>>>>>> gittree-wf-siyuan-w1-3
-=======
-sy_register av               cmd_av
->>>>>>> gittree-wf-siyuan-w1-5
 sy_register raw             cmd_raw
 sy_register raw-help        cmd_raw_help
 sy_register help            cmd_help
@@ -227,10 +208,6 @@ EOF
   --markdown 表格 (含表头分隔行), 如 siyuan sql "SELECT id,hpath FROM blocks LIMIT 5" --markdown
 EOF
 ;;
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
->>>>>>> gittree-wf-siyuan-w1-5
     touch)    cat <<'EOF'
 用法: siyuan touch --notebook <nb> --title <t> [--parent <pid> | --path <hpath>] [--data <md>|--file <md>|stdin]
   新建文档 (默认笔记本根目录); 内容可选 (空文档 = 空文件语义)
@@ -284,22 +261,13 @@ EOF
   输出: 文档 id
 EOF
 ;;
-<<<<<<< HEAD
-    children|backlinks|write|append|insert-block|update-block|delete-block|replace-doc|move|remove|raw|raw-help)
-      usage >&2
-=======
-=======
->>>>>>> gittree-wf-siyuan-w1-5
     children|backlinks|write|append|insert-block|update-block|delete-block|replace-doc|move|remove|av|raw|raw-help)
+      usage >&2
       if [[ -n "${1:-}" && "$1" == av* ]]; then
         av_usage "${1#av }"
       else
         usage >&2
       fi
-<<<<<<< HEAD
->>>>>>> gittree-wf-siyuan-w1-3
-=======
->>>>>>> gittree-wf-siyuan-w1-5
       ;;
     *) usage >&2;;
   esac
