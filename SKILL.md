@@ -22,45 +22,47 @@ description: >
 ~/.pi/skills/siyuan/bin/siyuan <command> [args]
 ```
 
-shell 风格命令集 (类似 Linux 命令操作思源笔记): 默认人类可读文本 (行式可管道组合), `--json` 输出稳定字段 (agent 用), 写入操作返回 doc/block id。工作区 `/Users/geeyu/space/siyuan` (可被 `SIYUAN_WORKSPACE` 覆盖)。
+**shell 风格命令集** (像 Linux 命令一样操作思源笔记): 默认人类可读文本 (行式可管道组合), `--json` 输出稳定字段 (agent 用), 写入操作返回 doc/block id。工作区 `/Users/geeyu/space/siyuan` (可被 `SIYUAN_WORKSPACE` 覆盖)。
 
 ## 常用命令速查
 
-### 读取 (查询类, shell 风格)
+### 查询 (shell 风格, 输出行式可管道组合)
 | 命令 | 作用 |
 |------|------|
-| `ls [笔记本] [路径] [-l]` | 列笔记本/文档 (笔记本可传中文名, 路径支持 /hpath) |
-| `tree <doc>` | 标题树/大纲 |
+| `ls [笔记本] [路径] [-l]` | 列笔记本/文档 (笔记本可传中文名, 路径支持 /hpath; 无参列笔记本) |
+| `tree <doc> [-l]` | 标题树/大纲 (`-l` 附块 id) |
 | `cat <doc>` | 读文档 markdown 源 (最准, 不受索引滞后影响) |
 | `head/tail <doc> [-n N]` | 读文档开头/末尾 N 行 (默认 10) |
-| `find <关键词> [--notebook <nb>]` | 跨库搜文档标题, 输出 `doc_id<TAB>hpath<TAB>notebook` |
-| `grep <pattern> [-v] [-i] [-m 0-3]` | 内容全文检索; **管道输入时按行过滤** (`ls 工作 \| grep 调课`) |
+| `find <关键词> [--notebook <nb>] [-l N]` | 跨库搜文档标题, 输出 `doc_id<TAB>hPath<TAB>notebook_id` |
+| `grep <pattern> [-v] [-i] [-l] [-m 0-3] [--notebook <nb>]` | 内容全文检索; **管道输入时按行过滤** (真 grep) |
 | `which <doc-id\|标题\|/路径> [-v]` | 定位文档 → 输出唯一 doc id (多匹配报错并列出候选) |
 | `stat <doc>` | 文档元信息 |
-| `sql "<statement>" [-l N]` | 执行 SQL (默认 limit 100) |
-| `children <block-id>` | 列子块 (编辑前定位) |
-| `backlinks <block-id> [--keyword]` | 查反链 |
+| `sql "<statement>" [-l N] [-H]` | 执行 SQL (默认 limit 100, 文本=TSV 行) |
+| `children <block-id>` | 列子块 (编辑前定位): `id<TAB>type<TAB>content` |
+| `backlinks <block-id> [--keyword <kw>]` | 查反链 |
 
-> `<doc>` 可以是 doc-id / 标题 / /完整路径; 组合示例: `siyuan cat $(siyuan which /工作/调课)`、`siyuan ls 工作 | siyuan grep 调课`。旧命令名 list/read/get/outline/search/notebooks 保留为别名。
+> `<doc>` 可以是 doc-id / 标题 / /完整路径 (用 `which` 定位, 多匹配报错并列出候选)。
+> 组合示例: `siyuan ls 工作 | siyuan grep 调课`、`siyuan cat $(siyuan which /工作/调课)`、`siyuan grep 调课 -l | head -5`。
+> 旧命令名 `notebooks/nb/list/read/get/outline/search/create/bl/rm` 保留为别名 (完整命令总表见 [references/commands.md](references/commands.md))。
 
 ### 写入/编辑
 | 命令 | 作用 |
 |------|------|
-| `write --notebook <nb> --title <t> [--parent-id <pid> \| --path <hpath>] [--file\|stdin]` | 建文档 (推荐 --parent-id), 返回 id |
+| `write --notebook <nb> --title <t> [--parent-id <pid> \| --path <hpath>] [--file\|stdin]` | 建文档 (推荐 --parent-id), 返回新文档 id |
 | `append <doc-id> [--data\|--file\|stdin]` | 追加到文档末尾 |
-| `insert-block --previous <bid>\|--parent <doc-id> [--data]` | 插入块 |
-| `update-block <block-id> [--data\|--file]` | 替换块内容 |
+| `insert-block --previous <bid>\|--parent <doc-id> [--data\|--file\|stdin]` | 插入块 |
+| `update-block <block-id> [--data\|--file\|stdin]` | 替换块内容 |
 | `replace-doc <doc-id> [--data\|--file\|stdin]` | 替换整篇文档 (删旧写新, 保留标题) |
 | `delete-block <block-id>` | 删除块 |
-| `move <doc-id> --parent-id <pid>` | 移动文档到另一父文档下 |
-| `remove <doc-id>` | 删文档 |
+| `move <doc-id> --parent-id <pid>` | 移动文档到另一父文档下 (同/跨笔记本均可) |
+| `remove <doc-id>` | 删除文档 (别名 `rm`) |
 
-内容传入统一支持 `--data <字符串>` / `--file <文件>` / 管道 stdin。
+内容传入统一支持 `--data <字符串>` / `--file <文件>` / 管道 stdin; 写入命令返回 `ok` 或新文档 id。
 
 ### 底层透传 (封装层未覆盖的完整能力)
 | 命令 | 作用 |
 |------|------|
-| `raw <args...>` | 透传给 SiYuan-Kernel (自带 -w) |
+| `raw <args...>` | 透传给 SiYuan-Kernel (自带 -w, 默认 table, 可加 `-f json`) |
 | `raw-help <subcommand...>` | 查底层命令帮助, 例 `raw-help block insert` |
 
 **完整的底层命令参考** (24 类命令: notebook/document/block/outline/ref/sql/search/database/attr/bookmark/tag/dailynote/file/export/import/asset/history/inbox/template/repo/sync/system/workspace/serve): 见 [references/commands.md](references/commands.md)。
@@ -73,13 +75,29 @@ siyuan raw block prepend --parent <id> [--data]     # 文档开头插入块
 siyuan raw block move --id <id> --parent <pid>      # 移动块
 siyuan raw block kramdown --id <id>                 # 原始 kramdown (含块属性 {: id=...})
 siyuan raw export docx --id <id> --output <file>    # 导出 Word
+siyuan raw repo diff --left <id> --right <id>       # 对比两个数据快照
 ```
+
+### 计划命名 ↔ 实现命令对照
+
+重构计划的 Linux 风格命名与最终实现命令的对应关系 (计划名未直接实现, 功能由下表命令提供):
+
+| 计划名 | 实现命令 | 说明 |
+|------|------|------|
+| `touch` (建空文档) | `write` | 建文档, 内容可留空 |
+| `edit` (编辑) | `append` / `update-block` / `replace-doc` / `insert-block` | 追加 / 改块 / 整体替换 / 插块 |
+| `mv` (移动) | `move` | 移动文档到另一父文档 |
+| `cp` (复制) | `raw document duplicate` | 复制文档 |
+| `rm` (删除) | `remove` (别名 `rm` ✅) | 删除文档 |
+| `diff` (对比) | `cat <docA> > a.md; cat <docB> > b.md; diff a.md b.md` / `raw repo diff` | 文档内容对比 / 快照对比 |
+| `rename` (改名) | `raw document rename` | 只改 IAL title, 不改 H1 |
+| `av` (数据库) | `raw database ...` + `scripts/av_ops.js` | 见 [references/database.md](references/database.md) |
 
 ## 核心约定 (高频必读)
 
 1. **创建文档优先用 `--parent-id`**: 思源 createDocWithMd 按 hpath 创建会重复建中间块, 封装层已用「createDocWithMd + moveDocs + 删中间块」三步自动处理, 直接用即可。
-2. **判断写入成功看 `read`, 不看 SQL**: block update/delete 后 SQL 查 `content` 可能滞后 (FlushTxQueue 异步索引, 秒级), `siyuan read <doc-id>` 直接读文件是准的。没刷新 `sleep 2-3` 再查。
-3. **文档名由 IAL `title` 决定, 不是 H1**: `document rename` 只改 IAL title 不改 H1 文本, 两者会不一致。要同步改 H1 需 `update-block <h1块id> --data '# 新标题'`。
+2. **判断写入成功看 `cat`, 不看 SQL**: block update/delete 后 SQL 查 `content` 可能滞后 (FlushTxQueue 异步索引, 秒级), `siyuan cat <doc-id>` 直接读文件是准的。没刷新 `sleep 2-3` 再查。
+3. **文档名由 IAL `title` 决定, 不是 H1**: `raw document rename` 只改 IAL title 不改 H1 文本, 两者会不一致。要同步改 H1 需 `update-block <h1块id> --data '# 新标题'`。
 4. **notebook 参数支持中文名**: `siyuan ls 工作` 自动解析成 notebook id; 设 `SIYUAN_DEFAULT_NOTEBOOK` 后无参 `ls` 直接列该库。
 5. **move 封装命令同/跨笔记本都适用**: 底层 `document move` 只能跨笔记本, 封装层 `move` 自动走 HTTP moveDocs。
 6. **不知道参数时**: `siyuan raw-help <command>` 查帮助, 不要猜。
@@ -92,20 +110,23 @@ siyuan raw export docx --id <id> --output <file>    # 导出 Word
 需要录入结构化数据 (排查记录、台账、问题清单等) 且需多维统计时, 使用数据库功能。
 **这是复杂操作, 单独有完整文档**: [references/database.md](references/database.md)。
 
-关键提醒 (避免踩坑):
-- 数据库必须先在思源 App 里创建, CLI 只能操作已存在的库
-- `database item update` 返回 `ok` **不代表写入成功** (CLI bug, 错误 value 结构静默失败), 必须 `database get` 验证
-- value 的 JSON 必须按字段类型嵌套 (如 select 用 `mSelect` 数组, date 用 Unix 毫秒时间戳)
-- `item add` 不返回 itemID, 需 get 反查 `values[].blockID`
-- **value 含双引号时用临时文件传递**, 或直接用 `scripts/av_ops.js` 工具库 (推荐)
-
-**工具库 `scripts/av_ops.js`** (JS, 推荐): 封装所有 AV 操作, 自动处理引号陷阱和嵌套结构:
+av 命令组构成:
+- 底层透传: `siyuan raw database search/get/keys/render/item add|update|remove/key add|remove`
+- 工具库 `scripts/av_ops.js` (推荐): 封装所有 AV 操作, 自动处理引号陷阱和嵌套结构:
 ```bash
 node scripts/av_ops.js search "排查记录"   # 查 avID
-node scripts/av_ops.js verify <avID>         # 验证所有行字段实际值
-node scripts/av_ops.js export <avID>         # 导出 JSON (备份)
+node scripts/av_ops.js keys <avID>         # 列字段
+node scripts/av_ops.js verify <avID>       # 验证所有行字段实际值
+node scripts/av_ops.js export <avID>       # 导出 JSON (备份)
 ```
-便捷填值方法自动构造正确结构: `setCellSelect` (自动用 mSelect)、`setCellDate` (自动转毫秒)、`setCellText` (自动处理引号)。
+
+关键提醒 (避免踩坑):
+- 数据库必须先在思源 App 里创建, CLI 只能操作已存在的库
+- **3.8.0 breaking (B1/B2)**: `database keys` 输出变为 `{id,name,keys:[]}` 对象包装 (B1); `database get` 不再返回行数据 (B2), 反查 itemID / 验证写入改用 `database render` (`view.rows[].id` = itemID)
+- `database item update` 返回 `ok` **不代表写入成功** (CLI bug, 错误 value 结构静默失败), 必须 `database render` 验证
+- value 的 JSON 必须按字段类型嵌套 (如 select 用 `mSelect` 数组, date 用 Unix 毫秒时间戳)
+- `item add` 不返回 itemID, 需反查
+- **value 含双引号时用临时文件传递**, 或直接用 `scripts/av_ops.js` 工具库 (推荐)
 
 **排查记录库** (已建): avID `20260709112905-e1gm9bd`, 字段设计见 database.md。
 
@@ -126,7 +147,7 @@ EOF
 
 ### 2. 搜已有笔记 + 读内容
 ```bash
-siyuan find "调课"        # 搜文档: doc_id<TAB>hpath<TAB>notebook
+siyuan find "调课"        # 搜文档: doc_id<TAB>hPath<TAB>notebook_id
 DOC=$(siyuan which 调课)   # 定位文档 → doc id (同名多匹配时报错并列出候选)
 siyuan cat "$DOC"         # 读 markdown 源 (准)
 siyuan tree "$DOC"        # 标题树
@@ -137,21 +158,30 @@ siyuan children "$DOC"    # 看子块结构
 ```bash
 DOC=$(siyuan which 调课)
 siyuan append "$DOC" --data "## 新章节\n内容"
-# 改标题块 (先定位块 id; sql 单列查询输出即 id)
+# 改标题块 (先定位块 id)
 BID=$(siyuan sql "SELECT id FROM blocks WHERE root_id='$DOC' AND content='旧标题'" | head -1)
 siyuan update-block "$BID" --data "## 新标题"
 # 重命名文档 (只改文档名, H1 不变; 要同步改 H1 见 conventions.md §5)
 siyuan raw document rename --id "$DOC" --title "新文档名"
 ```
 
-### 4. 定位目录 + 移动文档
+### 4. 管道组合 (命令可组合)
+```bash
+siyuan ls 工作 | siyuan grep 调课              # 过滤文档列表
+siyuan ls 工作 | siyuan grep -v 废弃           # 排除
+siyuan grep 调课 -l | head -5                  # 内容命中的前 5 篇文档
+siyuan cat $(siyuan which /工作/调课)           # 定位并读文档
+siyuan find 调课 | siyuan grep 供应链           # 标题过滤
+```
+
+### 5. 定位目录 + 移动文档
 ```bash
 # 同名平级目录 (如 调课/调场) 用完整路径消歧
 NEW_PARENT=$(siyuan which /调场)
 siyuan move <doc-id> --parent-id "$NEW_PARENT"
 ```
 
-### 5. 录入排查记录到数据库
+### 6. 录入排查记录到数据库
 见 [references/database.md](references/database.md) 的「完整录入示例」。
 
 ## 工作区信息
@@ -167,5 +197,5 @@ siyuan move <doc-id> --parent-id "$NEW_PARENT"
 - **"工作区不存在"**: 设 `SIYUAN_WORKSPACE` 指向正确路径
 - **思源没启动**: CLI 直接操作工作区文件, 不需要 App 运行; App 开着且操作了数据时, 操作后在 App 里刷新
 - **命令报错 Unknown flag**: 用 `siyuan raw-help <command>` 查最新参数
-- **SQL 查到旧数据**: 索引滞后, `sleep 2-3` 后重试, 或用 `read` 验证
+- **SQL 查到旧数据**: 索引滞后, `sleep 2-3` 后重试, 或用 `cat` 验证
 - **数据库写入不生效**: 见 [references/database.md](references/database.md), `item update` 的 ok 不可信, 用 `node scripts/av_ops.js verify <avID>` 验证; value 含双引号用临时文件或 av_ops.js

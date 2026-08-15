@@ -56,8 +56,14 @@ siyuan which 标题                       # 定位文档 → doc id
 siyuan stat <doc>                       # 文档元信息
 siyuan sql "SELECT ..."                 # SQL 查询
 siyuan write --notebook 工作 --title "T" --parent-id <pid>   # 建文档
-siyuan raw database search "库名"       # 底层透传 (见 references/database.md)
+siyuan append <doc-id> --data "## 新章节"  # 追加内容
+siyuan update-block <block-id> --data "新内容"  # 改块
+siyuan move <doc-id> --parent-id <pid>   # 移动文档
+siyuan remove <doc-id>                   # 删文档
+siyuan raw database search "库名"       # av 命令组: 底层透传 (见 references/database.md)
 ```
+
+旧命令名 `notebooks/nb/list/read/get/outline/search/create/bl/rm` 保留为别名; 计划命名 (touch/edit/mv/cp/diff/rename/av) 与实现命令的对应关系见 SKILL.md 与 references/commands.md。
 
 组合 (管道):
 ```bash
