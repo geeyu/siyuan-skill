@@ -62,7 +62,7 @@ sy_register cp              cmd_cp
 sy_register rm              cmd_rm
 sy_register diff            cmd_diff
 sy_register rename          cmd_rename
-sy_register db               cmd_av av
+sy_register db               cmd_av
 sy_register raw             cmd_raw
 sy_register raw-help        cmd_raw_help
 sy_register help            cmd_help
@@ -121,7 +121,7 @@ siyuan — 思源笔记命令行 (基于 SiYuan-Kernel 3.8+, shell 风格)
   move <doc> --parent <父文档>          移动文档 (同 mv)
   remove <doc>                         删除文档 (同 rm)
 
-数据库 (属性视图, 适配 3.8.0; 别名 av):
+数据库 (属性视图, 适配 3.8.0):
   db list [--json|--markdown]         列出全部数据库 (名称+avID)
   db keys <avID> [--json|--markdown]  列字段
   db rows <avID> [--limit N] [-H] [--json|--markdown]  列行数据 (走 render)

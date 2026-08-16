@@ -35,11 +35,11 @@ tbl_check "ls --markdown" "名称.*ID" ls --markdown
 tbl_check "ls 工作 --markdown" "名称.*ID.*笔记本" ls 工作 --markdown
 tbl_check "sql --markdown" "hpath.*id" sql "SELECT id,hpath FROM blocks WHERE type='d' AND hpath='/调课' LIMIT 2" --markdown
 tbl_check "stat --markdown" "字段.*值" stat /调课 --markdown
-tbl_check "av list --markdown" "名称.*avID.*路径" av list --markdown
-tbl_check "av keys --markdown" "字段名.*类型.*keyID" av keys 排查记录库 --markdown
-tbl_check "av rows --markdown" "itemID.*标题" av rows 排查记录库 --limit 2 --markdown
-tbl_check "av get --markdown" "项目.*值" av get 排查记录库 --row 20260816050945-270wfmd --markdown
-tbl_check "av verify --markdown" "itemID.*标题" av verify 排查记录库 --markdown
+tbl_check "av list --markdown" "名称.*avID.*路径" db list --markdown
+tbl_check "av keys --markdown" "字段名.*类型.*keyID" db keys 排查记录库 --markdown
+tbl_check "av rows --markdown" "itemID.*标题" db rows 排查记录库 --limit 2 --markdown
+tbl_check "av get --markdown" "项目.*值" db get 排查记录库 --row 20260816050945-270wfmd --markdown
+tbl_check "av verify --markdown" "itemID.*标题" db verify 排查记录库 --markdown
 
 echo "== 列表类: bullet 层级 + 链接 =="
 list_check() { # <名称> <行号> <正则> <命令...>

@@ -32,7 +32,7 @@ references/conventions.md       批量整理等事故规范
   - `bin/lib/cmd-misc.sh` — sql/raw/raw-help/children/backlinks
   - `bin/lib/cmd-write.sh` — 底层写入组 (write/append/insert-block/update-block/delete-block/replace-doc/move/remove)
   - `bin/lib/cmd-edit.sh` — shell 风格编辑组 (touch/edit/mv/cp/rm/diff/rename)
-  - `bin/lib/cmd-av.sh` — db 命令组 (适配 3.8.0 B1/B2, 别名 av)
+  - `bin/lib/cmd-av.sh` — db 命令组 (适配 3.8.0 B1/B2)
   - `bin/lib/fmt.js` — node 数据格式化助手
 - `scripts/smoke-markdown.sh` — 开发自测冒烟脚本
 

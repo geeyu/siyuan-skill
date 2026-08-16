@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# siyuan db 子命令组 (属性视图 / 数据库; 别名 av): list / keys / rows / get / add / update /
+# siyuan db 子命令组 (属性视图 / 数据库): list / keys / rows / get / add / update /
 #   remove / verify / export
 #
 # 适配 SiYuan-Kernel 3.8.0 breaking 变更:

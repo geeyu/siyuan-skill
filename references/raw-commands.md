@@ -93,7 +93,7 @@
 
 ## database — 数据库 (属性视图)
 
-> 封装: `siyuan av` 命令组 (推荐, 自动处理嵌套值/反查/验证, 见 commands.md)。以下为底层透传, 高级/一次性操作时用。
+> 封装: `siyuan db` 命令组 (推荐, 自动处理嵌套值/反查/验证, 见 commands.md)。以下为底层透传, 高级/一次性操作时用。
 
 | 命令 | 作用 |
 |------|------|
@@ -139,7 +139,7 @@
 
 - **blockID**: 绑定文档块的 ID (item add 的 `--block` 值), 是首列主键指向的文档
 - **itemID**: 数据库行的 ID, **每次 add 新生成** (≠ blockID); **item add 不返回 itemID**, 必须 render 反查 (`view.rows[].id`)
-- **value 含双引号**: 用临时文件传递 (`--value "$(cat /tmp/v.txt)"`) 或直接用 db 命令组 (别名 av) (`--values @file`), shell 单引号嵌套会静默截断
+- **value 含双引号**: 用临时文件传递 (`--value "$(cat /tmp/v.txt)"`) 或直接用 db 命令组 (`--values @file`), shell 单引号嵌套会静默截断
 
 ## attr / bookmark / tag — 属性、书签、标签
 
