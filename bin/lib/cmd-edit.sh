@@ -353,6 +353,19 @@ cmd_rename() {
   fi
   local doc
   doc="$(sy_resolve_doc rename "$doc_ref")" || return $?
+  # ⚠ 新标题冲突预检: 同父级下已有同名文档则报错 (避免目录下重名混乱)
+  local box parent_id dup
+  box="$(sy_json rename sql "SELECT box FROM blocks WHERE id='$doc'" |
+    "$SY_NODE" "$SY_LIB_DIR/fmt.js" first-field box)" || return $?
+  parent_id="$(sy_json rename sql "SELECT parent_id FROM blocks WHERE id='$doc'" |
+    "$SY_NODE" "$SY_LIB_DIR/fmt.js" first-field parent_id)" || return $?
+  local esc_t
+  esc_t="${new_title//\'/\'\'}"
+  dup="$(sy_json rename sql "SELECT id FROM blocks WHERE box='$box' AND parent_id='$parent_id' AND content='$esc_t' AND id!='$doc' AND type='d' LIMIT 1" |
+    "$SY_NODE" "$SY_LIB_DIR/fmt.js" ids)" || return $?
+  if [[ -n "$dup" ]]; then
+    sy_die 1 "rename: 同目录下已存在同名文档 '$new_title' ($dup)" "改名会造成目录下重名混乱; 换一个标题, 或先处理重名文档"
+  fi
   sy_kernel_or_die rename document rename --id "$doc" --title "$new_title" >/dev/null
 
   # H1 子块同步 (第一个 h1; 无 H1 子块的文档跳过, 文档名即标题)

@@ -429,9 +429,10 @@ cmd_av_add() {
   local before_rc
   before_rc="$(sy_av_render_all "av add" "$av" | "$SY_NODE" "$SY_LIB_DIR/fmt.js" av-rowcount)" || return $?
 
-  # item add (默认游离行; --block 绑定文档块)
+  # item add (默认游离行; --block 绑定文档块, 引用支持 id/标题/路径)
   local iargs=(database item add --av "$av")
   if [[ -n "$block" ]]; then
+    block="$(sy_resolve_doc "av add" "$block")" || return $?
     iargs+=(--block "$block")
   else
     iargs+=(--detached)
