@@ -262,26 +262,36 @@ sy_tsv() {
 # 业务解析助手
 # ---------------------------------------------------------------------------
 
-# 解析笔记本引用 (id 或名字) -> stdout: notebook id; 失败 sy_die
-sy_resolve_notebook() { # <ctx> <id或名字>
+# 解析笔记本引用 (id 或名字) -> stdout: notebook id; 找不到输出空 (不报错)
+sy_resolve_notebook_soft() { # <ctx> <id或名字>
   local ctx="$1" nb="$2"
+  [[ -n "$nb" ]] || return 0
   if [[ "$nb" =~ ^[0-9]{14}-[a-z0-9]{6,8}$ ]]; then
     echo "$nb"
     return 0
   fi
-  local out
+  local out id
   out="$(sy_json "$ctx" notebook list)" || return $?
-  local id
   id="$(echo "$out" | "$SY_NODE" "$SY_LIB_DIR/fmt.js" find-by-field name "$nb" id)"
+  [[ -n "$id" ]] && echo "$id"
+  return 0
+}
+
+# 解析笔记本引用 (id 或名字) -> stdout: notebook id; 失败 sy_die
+sy_resolve_notebook() { # <ctx> <id或名字>
+  local ctx="$1" nb="$2"
+  local id
+  id="$(sy_resolve_notebook_soft "$ctx" "$nb")" || return $?
   if [[ -z "$id" ]]; then
     sy_die 1 "$ctx: 找不到笔记本 '$nb'" "运行 'siyuan ls' 查看可用笔记本 (支持传 id 或中文名)"
   fi
   echo "$id"
 }
 
-# 定位文档引用 (id / 标题 / /完整路径) -> stdout: JSON 数组 [{id,hPath,box}]
-#   规则: id 精确查; /开头按 hpath 精确匹配 (无则回退标题搜索);
-#         标题走 document search, 优先精确同名, 再宽松匹配
+# 定位文档引用 (id / 标题 / 路径) -> stdout: JSON 数组 [{id,hPath,box}]
+#   规则: id 精确查; 含 / 的引用先按 hpath 精确匹配, 无匹配则尝试
+#         「笔记本名 + hPath」(如 /工作/调课, 或 find 输出直接复制的 工作/调课);
+#         仍无匹配回退标题搜索 (document search, 精确同名优先, 再宽松匹配)
 sy_locate_docs() { # <ctx> <引用>
   local ctx="$1" ref="$2"
   local out
@@ -290,14 +300,34 @@ sy_locate_docs() { # <ctx> <引用>
     echo "$out" | "$SY_NODE" "$SY_LIB_DIR/fmt.js" docs-sql
     return 0
   fi
-  if [[ "$ref" == /* ]]; then
+  if [[ "$ref" == /* ]] || [[ "$ref" == */* ]]; then
     local esc="${ref//\'/\'\'}"
     out="$(sy_json "$ctx" sql "SELECT id, hpath, box FROM blocks WHERE hpath='$esc' AND type='d'")" || return $?
     if [[ "$(echo "$out" | "$SY_NODE" "$SY_LIB_DIR/fmt.js" len)" -gt 0 ]]; then
       echo "$out" | "$SY_NODE" "$SY_LIB_DIR/fmt.js" docs-sql
       return 0
     fi
-    # 精确 hpath 无匹配 -> 按标题回退
+    # 精确 hpath 无匹配 -> 尝试「笔记本名 + hPath」(find 输出格式: 工作/调课)
+    local work first rest nb
+    work="${ref#/}"
+    if [[ "$work" == */* ]]; then
+      first="${work%%/*}"
+      rest="${work#*/}"
+      if ! [[ "$first" =~ ^[0-9]{14}-[a-z0-9]{6,8}$ ]]; then
+      nb="$(sy_resolve_notebook_soft "$ctx" "$first")" || return $?
+      if [[ -n "$nb" ]]; then
+        local hpath esc2
+        hpath="/$rest"
+        esc2="${hpath//\'/\'\'}"
+        out="$(sy_json "$ctx" sql "SELECT id, hpath, box FROM blocks WHERE box='$nb' AND hpath='$esc2' AND type='d'")" || return $?
+        if [[ "$(echo "$out" | "$SY_NODE" "$SY_LIB_DIR/fmt.js" len)" -gt 0 ]]; then
+          echo "$out" | "$SY_NODE" "$SY_LIB_DIR/fmt.js" docs-sql
+          return 0
+        fi
+      fi
+      fi
+    fi
+    # 精确路径无匹配 -> 按标题回退
   fi
   # 标题: document search, 精确同名优先
   sy_json "$ctx" document search "$ref" |

@@ -11,6 +11,7 @@ description: >
 ## 何时使用
 
 用户想把内容写进思源笔记、查询思源里的笔记、或对思源做批量操作时使用。典型场景:
+
 - "把这个分析整理成笔记" / "记到思源里"
 - "查一下我思源里关于 X 的笔记"
 - "在 XX 笔记本下建一篇文档" / "给那篇笔记追加一段内容"
@@ -27,25 +28,27 @@ shell 风格命令集 (类似 Linux 命令操作思源笔记): 默认人类可�
 ## 常用命令速查
 
 ### 读取 (查询类, shell 风格)
+
 | 命令 | 作用 |
-|------|------|
+| ------ | ------ |
 | `ls [笔记本] [路径] [-l]` | 列笔记本/文档 (笔记本可传中文名, 路径支持 /hpath) |
 | `tree <doc>` | 标题树/大纲 |
 | `cat <doc>` | 读文档 markdown 源 (最准, 不受索引滞后影响) |
 | `head/tail <doc> [-n N]` | 读文档开头/末尾 N 行 (默认 10) |
 | `find <关键词> [--notebook <nb>]` | 跨库搜文档标题, 输出 `doc_id<TAB>hpath<TAB>notebook` |
 | `grep <pattern> [-v] [-i] [-m 0-3]` | 内容全文检索; **管道输入时按行过滤** (`ls 工作 \| grep 调课`) |
-| `which <doc-id\|标题\|/路径> [-v]` | 定位文档 → 输出唯一 doc id (多匹配报错并列出候选) |
+| `which <doc-id\|标题\|路径> [-v]` | 定位文档 → 输出唯一 doc id; 路径支持带笔记本前缀 (如 `/工作/调课` 或 find 输出的 `工作/调课`); 多匹配报错并列出候选 |
 | `stat <doc>` | 文档元信息 |
 | `sql "<statement>" [-l N]` | 执行 SQL (默认 limit 100) |
 | `children <block-id>` | 列子块 (编辑前定位) |
 | `backlinks <block-id> [--keyword]` | 查反链 |
 
-> `<doc>` 可以是 doc-id / 标题 / /完整路径; 组合示例: `siyuan cat $(siyuan which /工作/调课)`、`siyuan ls 工作 | siyuan grep 调课`。旧命令名 list/read/get/outline/search/notebooks 保留为别名。
+> `<doc>` 可以是 doc-id / 标题 / 路径 (hPath 或带笔记本前缀, 如 `/工作/调课`、`工作/调课`); 组合示例: `siyuan cat $(siyuan which /工作/调课)`、`siyuan ls 工作 | siyuan grep 调课`。旧命令名 list/read/get/outline/search/notebooks 保留为别名。
 
 ### 写入/编辑
+
 | 命令 | 作用 |
-|------|------|
+| ------ | ------ |
 | `touch --notebook <nb> --title <t> [--parent <pid> \| --path <hpath>] [--file\|stdin]` | 建文档 (默认笔记本根; createDocWithMd 三步语义无中间块残留), 返回 id |
 | `edit <doc> (--append\|--prepend\|--update <块id>\|--replace) <text> [--file\|stdin]` | 统一编辑入口: 追加/开头插入/改块/整篇替换, 返回目标 id |
 | `mv <doc> --to <父id> [--notebook <nb>]` | 移动文档 (同/跨笔记本), 返回文档 id |
@@ -65,6 +68,7 @@ shell 风格命令集 (类似 Linux 命令操作思源笔记): 默认人类可�
 内容传入统一支持 `--data <字符串>` / `--file <文件>` / 管道 stdin; 每次写操作返回目标 id (可 `$(siyuan touch ...)` 直接取用)。
 
 ### 底层透传 (封装层未覆盖的完整能力)
+
 | 命令 | 作用 |
 |------|------|
 | `raw <args...>` | 透传给 SiYuan-Kernel (自带 -w) |
@@ -73,6 +77,7 @@ shell 风格命令集 (类似 Linux 命令操作思源笔记): 默认人类可�
 **完整的底层命令参考** (24 类命令: notebook/document/block/outline/ref/sql/search/database/attr/bookmark/tag/dailynote/file/export/import/asset/history/inbox/template/repo/sync/system/workspace/serve): 见 [references/commands.md](references/commands.md)。
 
 常用底层命令速查:
+
 ```bash
 siyuan raw document rename --id <id> --title <t>   # 重命名 (只改 IAL title, 不改 H1)
 siyuan raw document duplicate --id <id>             # 复制文档
@@ -112,6 +117,7 @@ siyuan av export <avID>                 # 导出全量 JSON (备份)
 ```
 
 关键提醒 (避免踩坑):
+
 - 数据库必须先在思源 App 里创建, CLI 只能操作已存在的库
 - **3.8.0 结构变更**: `database keys` 输出为 `{id,name,keys:[]}` 对象; 行数据不再由 `database get` 提供 (keyValues 消失), 全部走 `database render` (av 命令已适配 B1/B2)
 - `item update` 返回 `ok` **不代表写入成功** (CLI bug, 错误 value 结构静默失败) — **av add/update 写后自动 render 验证, 验证失败退出 1 并提示实际值**; 手动核实用 `siyuan av verify <avID>`
@@ -125,6 +131,7 @@ siyuan av export <avID>                 # 导出全量 JSON (备份)
 ## 典型用法
 
 ### 1. 写一篇笔记 (推荐 --parent-id)
+
 ```bash
 # 先定位目标父文档 id (用 which, 同名时用完整路径)
 PARENT=$(siyuan which /工作/调课)
@@ -138,6 +145,7 @@ EOF
 ```
 
 ### 2. 搜已有笔记 + 读内容
+
 ```bash
 siyuan find "调课"        # 搜文档: doc_id<TAB>hpath<TAB>notebook
 DOC=$(siyuan which 调课)   # 定位文档 → doc id (同名多匹配时报错并列出候选)
@@ -147,6 +155,7 @@ siyuan children "$DOC"    # 看子块结构
 ```
 
 ### 3. 编辑已有文档 (shell 风格)
+
 ```bash
 DOC=$(siyuan which 调课)
 siyuan edit "$DOC" --append "## 新章节
@@ -163,6 +172,7 @@ siyuan rm "$DOC"                                    # 删除
 ```
 
 ### 4. 定位目录 + 移动文档
+
 ```bash
 # 同名平级目录 (如 调课/调场) 用完整路径消歧
 NEW_PARENT=$(siyuan which /调场)
@@ -170,6 +180,7 @@ siyuan move <doc-id> --parent-id "$NEW_PARENT"
 ```
 
 ### 5. 录入排查记录到数据库
+
 见 [references/database.md](references/database.md) 的「完整录入示例」。
 
 ## 工作区信息
