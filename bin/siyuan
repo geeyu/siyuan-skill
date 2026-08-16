@@ -95,9 +95,9 @@ siyuan — 思源笔记命令行 (基于 SiYuan-Kernel 3.8+, shell 风格)
   stat <doc> [--json|--markdown]                 文档元信息
   sql "<语句>" [-l N] [-H] [--json|--markdown]   SQL 查询
 
-块查询:
-  children <block-id> [--json|--markdown]        子块列表 (编辑前定位)
-  backlinks <block-id> [--keyword <kw>] [--json|--markdown]  反链
+块查询 (引用可为块 id 或文档引用, 文档自动定位到其根块):
+  children <block|doc> [--json|--markdown]       子块列表 (编辑前定位)
+  backlinks <block|doc> [--keyword <kw>] [--json|--markdown]  反链
 
 写入/编辑 (shell 风格, 每次写操作返回目标 id; --markdown 返回确认块: 文档 id+标题+链接; --json 出稳定字段):
   touch --notebook <nb> --title <t> [--parent <pid>|--path <hpath>] [--data <md>|--file|stdin]
@@ -110,16 +110,16 @@ siyuan — 思源笔记命令行 (基于 SiYuan-Kernel 3.8+, shell 风格)
   diff <docA> <docB> [diff 参数...]    对比两文档 markdown (统一 diff 格式; 退出码 0=同 1=异)
   rename <doc> <新标题>                重命名 (IAL title + H1 同步, 输出文档 id)
 
-底层写入 (id 级):
-  write --notebook <nb> --title <t> [--parent-id <pid>|--path <hpath>] [--data <md>|--file|stdin]
-                                      建文档 (推荐 --parent-id), 返回新文档 id
-  append <doc-id> [--data|--file|stdin]   追加到文档末尾
-  insert-block --previous <bid>|--parent <doc-id> [--data|--file|stdin]  插入块
-  update-block <block-id> [--data|--file]  替换块内容
-  replace-doc <doc-id> [--data|--file|stdin]  替换整篇文档 (删旧写新, 保留标题)
+底层写入 (引用统一支持 id/标题/路径; 每次写操作返回目标 id):
+  write --notebook <nb> --title <t> [--parent <父文档>|--path <hpath>] [--data <md>|--file|stdin]
+                                      建文档 (同 touch, 推荐 touch), 返回新文档 id
+  append <doc> [--data|--file|stdin]  追加到文档末尾 (同 edit --append)
+  insert-block [--previous <块>|--parent <块|doc>] [--data|--file|stdin]  插入块
+  update-block <block-id> [--data|--file]  替换块内容 (同 edit --update)
+  replace-doc <doc> [--data|--file|stdin]  替换整篇文档 (删旧写新, 保留标题)
   delete-block <block-id>              删除块
-  move <doc-id> --parent-id <pid>      移动文档
-  remove <doc-id>                      删除文档
+  move <doc> --parent <父文档>          移动文档 (同 mv)
+  remove <doc>                         删除文档 (同 rm)
 
 数据库 (属性视图, 适配 3.8.0):
   av list [--json|--markdown]         列出全部数据库 (名称+avID)
@@ -139,7 +139,8 @@ siyuan — 思源笔记命令行 (基于 SiYuan-Kernel 3.8+, shell 风格)
 其他:
   help [命令]                          帮助; notebooks/list/read/get/outline/search 为旧名别名
 
-文档引用 <doc>: doc-id | 标题 | /完整路径 (用 which 定位, 多匹配报错并列出候选)
+文档引用 <doc>: doc-id | 标题 | 路径 (hPath 或带笔记本前缀, 如 /工作/调课、工作/调课);
+  多匹配报错并列出候选; 用 which 定位 (find/grep 输出路径可直接喂 which)
 环境变量: SIYUAN_KERNEL / SIYUAN_WORKSPACE / SIYUAN_FORMAT(text|json) /
           SIYUAN_TIMEOUT(默认60) / SIYUAN_DEFAULT_NOTEBOOK / SIYUAN_API_HOST / SIYUAN_API_PORT
 EOF
@@ -261,7 +262,58 @@ EOF
   输出: 文档 id
 EOF
 ;;
-    children|backlinks|write|append|insert-block|update-block|delete-block|replace-doc|move|remove|av|raw|raw-help)
+    children) cat <<'EOF'
+用法: siyuan children <block|doc> [--json|--markdown]
+  子块列表 (编辑前定位): id<TAB>type<TAB>内容; 文档引用自动定位到其根块
+  (如 siyuan children 调课 = 列该文档全部子块)
+EOF
+;;
+    backlinks) cat <<'EOF'
+用法: siyuan backlinks <block|doc> [--keyword <kw>] [--json|--markdown]
+  反链查询; 文档引用自动定位到其根块
+EOF
+;;
+    write) cat <<'EOF'
+用法: siyuan write --notebook <nb> --title <t> [--parent <父文档>|--path <hpath>] [--data <md>|--file <f>|stdin]
+  建文档 (同 touch, 推荐用 touch); --parent 引用支持 id/标题/路径; 输出新文档 id
+EOF
+;;
+    append) cat <<'EOF'
+用法: siyuan append <doc> [--data <md>|--file <f>|stdin] [--json|--markdown]
+  追加到文档末尾 (同 edit --append); 引用支持 id/标题/路径; 输出文档 id
+EOF
+;;
+    insert-block) cat <<'EOF'
+用法: siyuan insert-block [--previous <块>|--parent <块|doc>] [--data <md>|--file <f>|stdin]
+  插入块; --previous 为兄弟锚点 (自动取父), --parent 为父块/文档; 输出父块 id
+EOF
+;;
+    update-block) cat <<'EOF'
+用法: siyuan update-block <block-id> [--data <md>|--file <f>] [--json|--markdown]
+  替换块内容 (同 edit --update); 输出块 id
+EOF
+;;
+    delete-block) cat <<'EOF'
+用法: siyuan delete-block <block-id> [--json|--markdown]
+  删除块 (同 edit 无对应模式, 用 children 定位块 id); 输出块 id
+EOF
+;;
+    replace-doc) cat <<'EOF'
+用法: siyuan replace-doc <doc> [--data <md>|--file <f>|stdin] [--json|--markdown]
+  替换整篇文档 (删旧写新, 保留标题; 同 edit --replace); 引用支持 id/标题/路径; 输出文档 id
+EOF
+;;
+    move) cat <<'EOF'
+用法: siyuan move <doc> --parent <父文档> [--json|--markdown]
+  移动文档 (同 mv); 引用支持 id/标题/路径; 输出文档 id
+EOF
+;;
+    remove) cat <<'EOF'
+用法: siyuan remove <doc> [--json|--markdown]
+  删除文档 (同 rm); 引用支持 id/标题/路径; 输出文档 id
+EOF
+;;
+    av|raw|raw-help)
       usage >&2
       if [[ -n "${1:-}" && "$1" == av* ]]; then
         av_usage "${1#av }"

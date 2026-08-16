@@ -9,15 +9,15 @@
 `siyuan ls 工作` 会自动解析成 notebook id。
 源码: 封装层 `bin/lib/framework.sh` 的 `sy_resolve_notebook()`, 先匹配 id 格式正则 `^[0-9]{14}-[a-z0-9]{6,8}$`, 不匹配则按名查 `notebook list`。
 
-## 2. 创建文档优先用 --parent-id
+## 2. 创建文档优先用 --parent
 
 思源 `createDocWithMd` 按 hpath 创建会重复建同名中间块 (API 固有问题)。
-封装层 `write` 已用「createDocWithMd + moveDocs + 删中间块」三步自动处理:
+封装层 `touch`/`write` 已用「createDocWithMd + moveDocs + 删中间块」三步自动处理:
 1. `createDocWithMd` 按完整 hpath 创建 (会产生中间块)
 2. `moveDocs` 把新文档移到目标父块下
 3. 删除产生的空中间块 (`removeDocByID`)
 
-调用方只需传 `--parent-id`, 不会有副作用。
+调用方只需传 `--parent` (id/标题/路径, 旧名 `--parent-id` 兼容), 不会有副作用。
 源码: 封装层 `bin/lib/cmd-write.sh` 的 `cmd_write`, 思源侧 `kernel/api/filetree.go` createDocWithMd。
 
 ## 3. markdown 内容传入方式
@@ -33,7 +33,7 @@
 
 思源 block update/delete 后, SQL 查 `content` 字段可能滞后 (事务队列 `FlushTxQueue` 异步索引)。
 - SQL (`siyuan sql`) 查的是数据库, content 由事务队列异步更新, 秒级滞后
-- `siyuan cat <doc-id>` 走 `export md` 直接读文件树, 是准的
+- `siyuan cat <doc>` 走 `export md` 直接读文件树, 是准的
 
 索引滞后通常秒级, 实在没刷新 `sleep 2-3` 后再查, 不要反复重试。
 源码: `kernel/model/file.go` RenameDoc 调 `FlushTxQueue()`; `kernel/sql/block.go` `updateRootContent` 确认 content 由事务更新。
@@ -54,12 +54,12 @@ siyuan update-block "$H1" --data "# 新标题"
 ## 6. 移动文档用 move 封装命令
 
 底层 `document move` 只能跨笔记本 (`--notebook` 必填), 同笔记本改父级会失败。
-封装层 `siyuan move <doc-id> --parent-id <pid>` 自动走 HTTP API `moveDocs`:
-- 查文档 from_path 和目标 to_path (父文档 .sy 路径)
-- 调 `/api/filetree/moveDocs`
+封装层 `siyuan move <doc> --parent <父文档>` (同 `mv`, 引用支持 id/标题/路径) 自动处理:
+- 解析目标父文档 → 取其所在笔记本为 toNotebook、.sy 路径为 toPath
+- CLI `document move --id <doc> --notebook <toNotebook> --path <toPath>` (不依赖 HTTP serve)
 
 同/跨笔记本都适用。
-源码: 封装层 `cmd_move`; 思源侧 `documentMoveCmd` 要求 `--notebook`。
+源码: 封装层 `cmd_move`/`cmd_mv`; 思源侧 `documentMoveCmd` 要求 `--notebook`。
 
 ## 7. 孤儿块
 
@@ -79,7 +79,7 @@ parent=$(siyuan sql "SELECT parent_id FROM blocks WHERE id='$prev'" | head -1)
 
 ## 9. replace-doc 保留标题
 
-`siyuan replace-doc <doc-id>` 会先删文档下所有子块 (跳过文档块本身 type='d'), 再 append 新内容。
+`siyuan replace-doc <doc>` 会先删文档下所有子块 (跳过文档块本身 type='d'), 再 append 新内容。引用支持 id/标题/路径。
 文档名/标题块保留, 不会被覆盖。
 源码: 封装层 `cmd_replace_doc`, 用 SQL 查 `root_id='$id' AND type != 'd'` 拿子块逐个删。
 

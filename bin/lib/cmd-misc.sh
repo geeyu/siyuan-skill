@@ -97,16 +97,18 @@ cmd_children() {
       sy_usage children
       return 0
       ;;
-    -*) sy_die 2 "children: 未知参数 '$1'" "用法: siyuan children <block-id> [--json|--markdown]" ;;
+    -*) sy_die 2 "children: 未知参数 '$1'" "用法: siyuan children <block|doc> [--json|--markdown]" ;;
     *)
       args+=("$1")
       shift
       ;;
     esac
   done
-  [[ -n "${args[0]:-}" ]] || sy_die 2 "children: 缺少块 id" "用法: siyuan children <block-id> [--json|--markdown]"
+  [[ -n "${args[0]:-}" ]] || sy_die 2 "children: 缺少块/文档引用" "用法: siyuan children <block|doc> [--json|--markdown] (文档引用自动定位到其根块)"
+  local bid
+  bid="$(sy_resolve_block children "${args[0]}")" || return $?
   local out
-  out="$(sy_json children block children --id "${args[0]}")" || return $?
+  out="$(sy_json children block children --id "$bid")" || return $?
   case "$SY_MODE" in
   json)
     echo "$out"
@@ -141,15 +143,17 @@ cmd_backlinks() {
       sy_usage backlinks
       return 0
       ;;
-    -*) sy_die 2 "backlinks: 未知参数 '$1'" "用法: siyuan backlinks <block-id> [--keyword <kw>] [--json|--markdown]" ;;
+    -*) sy_die 2 "backlinks: 未知参数 '$1'" "用法: siyuan backlinks <block|doc> [--keyword <kw>] [--json|--markdown]" ;;
     *)
       args+=("$1")
       shift
       ;;
     esac
   done
-  [[ -n "${args[0]:-}" ]] || sy_die 2 "backlinks: 缺少块 id" "用法: siyuan backlinks <block-id> [--keyword <kw>] [--json|--markdown]"
-  local bargs=(ref backlinks --id "${args[0]}")
+  [[ -n "${args[0]:-}" ]] || sy_die 2 "backlinks: 缺少块/文档引用" "用法: siyuan backlinks <block|doc> [--keyword <kw>] [--json|--markdown] (文档引用自动定位到其根块)"
+  local bid
+  bid="$(sy_resolve_block backlinks "${args[0]}")" || return $?
+  local bargs=(ref backlinks --id "$bid")
   [[ -n "$kw" ]] && bargs+=(--keyword "$kw")
   # 内核 backlinks 在 JSON 后附加 "N backlink(s)" 摘要文本, 需提取 JSON 部分
   local raw rc=0

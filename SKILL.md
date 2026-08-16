@@ -31,17 +31,17 @@ shell 风格命令集 (类似 Linux 命令操作思源笔记): 默认人类可�
 
 | 命令 | 作用 |
 | ------ | ------ |
-| `ls [笔记本] [路径] [-l]` | 列笔记本/文档 (笔记本可传中文名, 路径支持 /hpath) |
+| `ls [笔记本] [路径] [-l]` | 列笔记本/文档; 路径支持 hpath, 单参完整路径 `ls /工作/调课` 自动拆库+路径 |
 | `tree <doc>` | 标题树/大纲 |
 | `cat <doc>` | 读文档 markdown 源 (最准, 不受索引滞后影响) |
 | `head/tail <doc> [-n N]` | 读文档开头/末尾 N 行 (默认 10) |
-| `find <关键词> [--notebook <nb>]` | 跨库搜文档标题, 输出 `doc_id<TAB>hpath<TAB>notebook` |
-| `grep <pattern> [-v] [-i] [-m 0-3]` | 内容全文检索; **管道输入时按行过滤** (`ls 工作 \| grep 调课`) |
+| `find <关键词> [--notebook <nb>]` | 跨库搜文档标题, 输出 `doc_id<TAB>完整路径<TAB>notebook` |
+| `grep <pattern> [-v] [-i] [-m 0-3]` | 内容全文检索, 输出完整路径 (与 find 一致, 可直接喂 which); **管道输入时按行过滤** (`ls 工作 \| grep 调课`) |
 | `which <doc-id\|标题\|路径> [-v]` | 定位文档 → 输出唯一 doc id; 路径支持带笔记本前缀 (如 `/工作/调课` 或 find 输出的 `工作/调课`); 多匹配报错并列出候选 |
 | `stat <doc>` | 文档元信息 |
 | `sql "<statement>" [-l N]` | 执行 SQL (默认 limit 100) |
-| `children <block-id>` | 列子块 (编辑前定位) |
-| `backlinks <block-id> [--keyword]` | 查反链 |
+| `children <block\|doc>` | 子块列表 (编辑前定位); 文档引用自动定位到其根块 |
+| `backlinks <block\|doc> [--keyword]` | 反链; 文档引用自动定位到其根块 |
 
 > `<doc>` 可以是 doc-id / 标题 / 路径 (hPath 或带笔记本前缀, 如 `/工作/调课`、`工作/调课`); 组合示例: `siyuan cat $(siyuan which /工作/调课)`、`siyuan ls 工作 | siyuan grep 调课`。旧命令名 list/read/get/outline/search/notebooks 保留为别名。
 
@@ -49,23 +49,23 @@ shell 风格命令集 (类似 Linux 命令操作思源笔记): 默认人类可�
 
 | 命令 | 作用 |
 | ------ | ------ |
-| `touch --notebook <nb> --title <t> [--parent <pid> \| --path <hpath>] [--file\|stdin]` | 建文档 (默认笔记本根; createDocWithMd 三步语义无中间块残留), 返回 id |
+| `touch --notebook <nb> --title <t> [--parent <父文档> \| --path <hpath>] [--file\|stdin]` | 建文档 (默认笔记本根; createDocWithMd 三步语义无中间块残留), 返回 id |
 | `edit <doc> (--append\|--prepend\|--update <块id>\|--replace) <text> [--file\|stdin]` | 统一编辑入口: 追加/开头插入/改块/整篇替换, 返回目标 id |
-| `mv <doc> --to <父id> [--notebook <nb>]` | 移动文档 (同/跨笔记本), 返回文档 id |
-| `cp <doc> [--to <父id>]` | 复制文档 (duplicate), 返回新副本 id |
-| `rm <doc>` | 删文档 (接受 id/标题/路径引用), 返回文档 id |
+| `mv <doc> --parent <父文档> [--notebook <nb>]` | 移动文档 (同/跨笔记本; 别名 --to), 返回文档 id |
+| `cp <doc> [--parent <父文档>]` | 复制文档 (duplicate; 别名 --to), 返回新副本 id |
+| `rm <doc>` | 删文档 (引用支持 id/标题/路径), 返回文档 id |
 | `diff <docA> <docB> [diff 参数...]` | 对比两文档 markdown (统一 diff 格式; 退出码 0=同 1=异) |
 | `rename <doc> <新标题>` | 重命名 (IAL title + H1 同步, 避免不一致), 返回文档 id |
-| `write --notebook <nb> --title <t> [--parent-id <pid> \| --path <hpath>] [--file\|stdin]` | 建文档 (推荐 --parent-id), 返回 id |
-| `append <doc-id> [--data\|--file\|stdin]` | 追加到文档末尾 |
-| `insert-block --previous <bid>\|--parent <doc-id> [--data]` | 插入块 |
-| `update-block <block-id> [--data\|--file]` | 替换块内容 |
-| `replace-doc <doc-id> [--data\|--file\|stdin]` | 替换整篇文档 (删旧写新, 保留标题) |
-| `delete-block <block-id>` | 删除块 |
-| `move <doc-id> --parent-id <pid>` | 移动文档到另一父文档下 |
-| `remove <doc-id>` | 删文档 (id 级) |
+| `write --notebook <nb> --title <t> [--parent <父文档> \| --path <hpath>] [--file\|stdin]` | 建文档 (同 touch, 推荐 touch), 返回 id |
+| `append <doc> [--data\|--file\|stdin]` | 追加到文档末尾 (同 edit --append), 返回文档 id |
+| `insert-block --previous <块>\|--parent <块\|doc> [--data]` | 插入块, 返回父块 id |
+| `update-block <block-id> [--data\|--file]` | 替换块内容 (同 edit --update), 返回块 id |
+| `replace-doc <doc> [--data\|--file\|stdin]` | 替换整篇文档 (删旧写新, 保留标题), 返回文档 id |
+| `delete-block <block-id>` | 删除块, 返回块 id |
+| `move <doc> --parent <父文档>\|--notebook <nb>` | 移动文档 (同 mv), 返回文档 id |
+| `remove <doc>` | 删文档 (同 rm), 返回文档 id |
 
-内容传入统一支持 `--data <字符串>` / `--file <文件>` / 管道 stdin; 每次写操作返回目标 id (可 `$(siyuan touch ...)` 直接取用)。
+**引用与响应统一约定**: 所有 `<doc>` 引用支持 id/标题/路径 (含笔记本前缀), 每次写操作返回目标 id (可 `$(siyuan touch ...)` 直接取用); 内容传入统一支持 `--data <字符串>` / `--file <文件>` / 管道 stdin。
 
 ### 底层透传 (封装层未覆盖的完整能力)
 
@@ -89,11 +89,11 @@ siyuan raw export docx --id <id> --output <file>    # 导出 Word
 
 ## 核心约定 (高频必读)
 
-1. **创建文档优先用 `--parent-id`/`--parent`**: 思源 createDocWithMd 按 hpath 创建会重复建中间块, 封装层已用「createDocWithMd + moveDocs + 删中间块」三步自动处理 (HTTP 不可用时自动回退 CLI `document create`, 无中间块问题), 直接用即可。
+1. **创建文档优先用 `--parent`**: 思源 createDocWithMd 按 hpath 创建会重复建中间块, 封装层已用「createDocWithMd + moveDocs + 删中间块」三步自动处理 (HTTP 不可用时自动回退 CLI `document create`, 无中间块问题), 直接用即可。`--parent` 引用支持 id/标题/路径。
 2. **判断写入成功看 `read`, 不看 SQL**: block update/delete 后 SQL 查 `content` 可能滞后 (FlushTxQueue 异步索引, 秒级), `siyuan cat <doc-id>` 直接读文件是准的。没刷新 `sleep 2-3` 再查。
 3. **文档名由 IAL `title` 决定, 不是 H1**: `rename` 命令已自动同步 (IAL title + 第一个 H1 子块文本); 底层 `document rename` 只改 IAL title 不改 H1 文本, 两者会不一致。⚠ 不要对文档块本身做 `block update` (会把整篇文档内容替换掉)。
 4. **notebook 参数支持中文名**: `siyuan ls 工作` 自动解析成 notebook id; 设 `SIYUAN_DEFAULT_NOTEBOOK` 后无参 `ls` 直接列该库。
-5. **mv/cp 同/跨笔记本都适用**: `mv <doc> --to <父id>` 自动取父文档所在笔记本, 跨库无需额外参数; 底层 `document move` 只能跨笔记本, 封装层自动处理。
+5. **mv/move、cp 同/跨笔记本都适用**: `mv <doc> --parent <父文档>` 自动取父文档所在笔记本, 跨库无需额外参数; 底层 `document move` 只能跨笔记本, 封装层自动处理。
 6. **不知道参数时**: `siyuan raw-help <command>` 查帮助, 不要猜。
 7. **退出码**: 0=成功 1=业务错误 2=用法错误 3=配置错误 124=超时; 内核调用默认 60 秒超时 (`SIYUAN_TIMEOUT` 可调)。`diff` 例外: 0=相同 1=有差异 (同系统 diff)。
 
@@ -130,12 +130,12 @@ siyuan av export <avID>                 # 导出全量 JSON (备份)
 
 ## 典型用法
 
-### 1. 写一篇笔记 (推荐 --parent-id)
+### 1. 写一篇笔记 (推荐 touch + --parent)
 
 ```bash
 # 先定位目标父文档 id (用 which, 同名时用完整路径)
 PARENT=$(siyuan which /工作/调课)
-cat <<'EOF' | siyuan write --notebook 工作 --title "调课逻辑梳理" --parent-id "$PARENT"
+cat <<'EOF' | siyuan touch --notebook 工作 --title "调课逻辑梳理" --parent "$PARENT"
 # 调课逻辑
 
 ## 入口
@@ -166,8 +166,8 @@ siyuan edit "$DOC" --update "$BID" "新段落文本"     # 改块 (返回块 id)
 echo '# 整篇新内容' | siyuan edit "$DOC" --replace  # 整篇替换
 siyuan rename "$DOC" "新文档名"                     # 改名 (IAL + H1 同步)
 siyuan diff "$DOC" "$(siyuan which 另一篇)"         # 对比两文档 (rc 1=有差异)
-siyuan mv "$DOC" --to "$(siyuan which /目标目录)"   # 移动
-siyuan cp "$DOC" --to "$(siyuan which /目标目录)"   # 复制
+siyuan mv "$DOC" --parent "$(siyuan which /目标目录)"   # 移动 (别名 --to)
+siyuan cp "$DOC" --parent "$(siyuan which /目标目录)"   # 复制 (别名 --to)
 siyuan rm "$DOC"                                    # 删除
 ```
 
@@ -176,7 +176,7 @@ siyuan rm "$DOC"                                    # 删除
 ```bash
 # 同名平级目录 (如 调课/调场) 用完整路径消歧
 NEW_PARENT=$(siyuan which /调场)
-siyuan move <doc-id> --parent-id "$NEW_PARENT"
+siyuan move "$DOC" --parent "$NEW_PARENT"   # 同 mv, 引用支持 id/标题/路径
 ```
 
 ### 5. 录入排查记录到数据库

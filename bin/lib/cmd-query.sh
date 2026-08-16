@@ -34,6 +34,21 @@ cmd_ls() {
     esac
   done
   local nb="${args[0]:-}" pth="${args[1]:-}"
+  # 单参完整路径 (ls /工作/调课 或 ls /工作): 自动拆笔记本 + 路径
+  if [[ -z "${args[1]:-}" && "$nb" == /* ]]; then
+    local work first rest nbsoft
+    work="${nb#/}"
+    first="${work%%/*}"
+    rest="${work#*/}"
+    [[ "$work" != */* ]] && rest=""
+    nbsoft="$(sy_resolve_notebook_soft ls "$first")" || return $?
+    if [[ -n "$nbsoft" ]]; then
+      nb="$nbsoft"
+      [[ -n "$rest" ]] && pth="/$rest"
+    elif [[ -z "$pth" ]]; then
+      sy_die 1 "ls: 无法从 '$nb' 解析笔记本名" "用法: siyuan ls <笔记本> [路径], 或完整路径 'siyuan ls /笔记本/路径' (如 /工作/调课)"
+    fi
+  fi
   # 设了默认笔记本时, 无参 ls 列该库文档; 首个参数为 /路径 视为路径
   if [[ -n "$SIYUAN_DEFAULT_NOTEBOOK" && -z "$nb" ]]; then
     nb="$SIYUAN_DEFAULT_NOTEBOOK"
@@ -442,7 +457,10 @@ cmd_grep() {
     if [[ $listonly -eq 1 ]]; then
       echo "$out" | "$SY_NODE" "$SY_LIB_DIR/fmt.js" grep-ids
     else
-      echo "$out" | "$SY_NODE" "$SY_LIB_DIR/fmt.js" grep-tsv
+      # 文本输出带笔记本名完整路径 (与 find 一致, 可直接喂 which)
+      local names
+      names="$(sy_nb_names grep)" || return $?
+      echo "$out" | NB_NAMES="$names" "$SY_NODE" "$SY_LIB_DIR/fmt.js" grep-tsv
     fi
     ;;
   esac

@@ -109,6 +109,13 @@ function nbName(box) {
   }
   return box;
 }
+// 完整文档路径: 「笔记本名 + hPath」(去前导 /), 与 find 输出格式一致, 可直接喂 which/ls
+function fullDocPath(hPath, box) {
+  const hp = (hPath || '').replace(/^\//, '');
+  const name = nbName(box || '');
+  const base = name && name !== box ? name : '';
+  return base ? (hp ? base + '/' + hp : base) : hp;
+}
 
 switch (cmd) {
   case 'check':
@@ -284,6 +291,7 @@ switch (cmd) {
       rootID: b.rootID || '',
       blockID: b.id || '',
       hPath: b.hPath || '',
+      fullPath: fullDocPath(b.hPath, b.box),
       content: (b.fcontent || '').replace(/<\/?mark>/g, ''),
     }));
     console.log(JSON.stringify(out));
@@ -292,7 +300,7 @@ switch (cmd) {
   case 'grep-tsv': {
     for (const b of parse().blocks || []) {
       const c = (b.fcontent || '').replace(/<\/?mark>/g, '').replace(/\n/g, ' ');
-      console.log([b.rootID || '', b.hPath || '', c].join('\t'));
+      console.log([b.rootID || '', fullDocPath(b.hPath, b.box), c].join('\t'));
     }
     break;
   }

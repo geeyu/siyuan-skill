@@ -314,17 +314,17 @@ sy_locate_docs() { # <ctx> <引用>
       first="${work%%/*}"
       rest="${work#*/}"
       if ! [[ "$first" =~ ^[0-9]{14}-[a-z0-9]{6,8}$ ]]; then
-      nb="$(sy_resolve_notebook_soft "$ctx" "$first")" || return $?
-      if [[ -n "$nb" ]]; then
-        local hpath esc2
-        hpath="/$rest"
-        esc2="${hpath//\'/\'\'}"
-        out="$(sy_json "$ctx" sql "SELECT id, hpath, box FROM blocks WHERE box='$nb' AND hpath='$esc2' AND type='d'")" || return $?
-        if [[ "$(echo "$out" | "$SY_NODE" "$SY_LIB_DIR/fmt.js" len)" -gt 0 ]]; then
-          echo "$out" | "$SY_NODE" "$SY_LIB_DIR/fmt.js" docs-sql
-          return 0
+        nb="$(sy_resolve_notebook_soft "$ctx" "$first")" || return $?
+        if [[ -n "$nb" ]]; then
+          local hpath esc2
+          hpath="/$rest"
+          esc2="${hpath//\'/\'\'}"
+          out="$(sy_json "$ctx" sql "SELECT id, hpath, box FROM blocks WHERE box='$nb' AND hpath='$esc2' AND type='d'")" || return $?
+          if [[ "$(echo "$out" | "$SY_NODE" "$SY_LIB_DIR/fmt.js" len)" -gt 0 ]]; then
+            echo "$out" | "$SY_NODE" "$SY_LIB_DIR/fmt.js" docs-sql
+            return 0
+          fi
         fi
-      fi
       fi
     fi
     # 精确路径无匹配 -> 按标题回退
@@ -350,6 +350,18 @@ sy_resolve_doc() {
     sy_die 1 "$ctx: 文档引用 '$ref' 有 $n 个匹配" "用完整路径消歧, 如 'siyuan $ctx /完整/路径/标题'"
   fi
   echo "$out" | "$SY_NODE" "$SY_LIB_DIR/fmt.js" ids
+}
+
+# 解析块引用 (块 id 或文档引用) -> stdout: block id
+#   规则: id 形态 (块/文档 id) 直接返回; 标题/路径按文档引用解析,
+#         文档根块 id 即文档 id (blocks 表 type=d 的 id), 直接可用
+sy_resolve_block() { # <ctx> <引用>
+  local ctx="$1" ref="$2"
+  if [[ "$ref" =~ ^[0-9]{14}-[a-z0-9]{6,8}$ ]]; then
+    echo "$ref"
+    return 0
+  fi
+  sy_resolve_doc "$ctx" "$ref"
 }
 
 # 取文档元数据 (id -> hPath/box, 来自 blocks 表)

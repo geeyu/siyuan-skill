@@ -149,7 +149,7 @@ cmd_write() {
       title="${2:?}"
       shift 2
       ;;
-    --parent-id)
+    --parent | --parent-id)
       parent_id="${2:?}"
       shift 2
       ;;
@@ -181,6 +181,10 @@ cmd_write() {
   fi
   local nbid
   nbid="$(sy_resolve_notebook write "$nb")" || return $?
+  # --parent 引用解析 (id/标题/路径)
+  if [[ -n "$parent_id" ]]; then
+    parent_id="$(sy_resolve_doc write "$parent_id")" || return $?
+  fi
 
   local md=""
   if [[ -n "$data" ]]; then
@@ -211,7 +215,7 @@ cmd_write() {
 # append <doc-id> [--data <md> | --file <f> | stdin] [--json|--markdown]
 # ---------------------------------------------------------------------------
 cmd_append() {
-  local id="${1:-}"
+  local doc_ref="${1:-}"
   shift
   local data="" file=""
   while [[ $# -gt 0 ]]; do
@@ -232,15 +236,18 @@ cmd_append() {
       sy_usage append
       return 0
       ;;
-    *) sy_die 2 "append: 未知参数 '$1'" "用法: siyuan append <doc-id> [--data <md> | --file <f> | stdin] [--json|--markdown]" ;;
+    *) sy_die 2 "append: 未知参数 '$1'" "用法: siyuan append <doc> [--data <md> | --file <f> | stdin] [--json|--markdown]" ;;
     esac
   done
-  [[ -n "$id" ]] || sy_die 2 "append: 缺少文档 id" "用法: siyuan append <doc-id> [--data <md> | --file <f> | stdin] [--json|--markdown]"
+  [[ -n "$doc_ref" ]] || sy_die 2 "append: 缺少文档引用" "用法: siyuan append <doc> [--data <md> | --file <f> | stdin] [--json|--markdown]"
   if [[ -z "$data" && -n "$file" ]]; then data="$(cat "$file")"; fi
   if [[ -z "$data" && ! -t 0 ]]; then data="$(cat)"; fi
   [[ -n "$data" ]] || sy_die 2 "append: 没有提供内容" "用 --data <md> / --file <f> / 管道 stdin 传入内容"
+  local id
+  id="$(sy_resolve_doc append "$doc_ref")" || return $?
   if [[ "$SY_MODE" == "text" ]]; then
-    sy_kernel_or_die append block append --parent "$id" --data "$data"
+    sy_kernel_capture append block append --parent "$id" --data "$data" >/dev/null || return $?
+    echo "$id"
   else
     # --json/--markdown: 抑制内核原始输出, 出确认块/稳定字段
     sy_kernel_capture append block append --parent "$id" --data "$data" >/dev/null || return $?
@@ -289,9 +296,9 @@ cmd_update_block() {
   if [[ -z "$data" && -n "$file" ]]; then data="$(cat "$file")"; fi
   if [[ -z "$data" && ! -t 0 ]]; then data="$(cat)"; fi
   if [[ "$SY_MODE" == "text" ]]; then
-    # 抑制内核原始输出 (block update 自身打印 ok), 统一单行 ok
+    # 抑制内核原始输出 (block update 自身打印 ok), 统一输出块 id
     sy_kernel_capture update-block block update --id "$id" --data "$data" >/dev/null || return $?
-    echo "ok"
+    echo "$id"
   else
     sy_kernel_capture update-block block update --id "$id" --data "$data" >/dev/null || return $?
     case "$SY_MODE" in
@@ -326,9 +333,9 @@ cmd_delete_block() {
   done
   [[ -n "$id" ]] || sy_die 2 "delete-block: 缺少块 id" "用法: siyuan delete-block <block-id> [--json|--markdown]"
   if [[ "$SY_MODE" == "text" ]]; then
-    # 抑制内核原始输出 (block delete 自身打印 ok), 统一单行 ok
+    # 抑制内核原始输出 (block delete 自身打印 ok), 统一输出块 id
     sy_kernel_capture delete-block block delete --id "$id" >/dev/null || return $?
-    echo "ok"
+    echo "$id"
   else
     sy_kernel_capture delete-block block delete --id "$id" >/dev/null || return $?
     case "$SY_MODE" in
@@ -378,24 +385,31 @@ cmd_insert_block() {
     esac
   done
   if [[ -z "$prev" && -z "$parent" ]]; then
-    sy_die 2 "insert-block: 缺少 --previous 或 --parent" "用法: siyuan insert-block --previous <bid> | --parent <doc-id> [--data <md>|--file <f>|stdin] [--json|--markdown]"
+    sy_die 2 "insert-block: 缺少 --previous 或 --parent" "用法: siyuan insert-block --previous <bid> | --parent <doc> [--data <md>|--file <f>|stdin] [--json|--markdown]"
   fi
   if [[ -z "$data" && -n "$file" ]]; then data="$(cat "$file")"; fi
   if [[ -z "$data" && ! -t 0 ]]; then data="$(cat)"; fi
   [[ -n "$data" ]] || sy_die 2 "insert-block: 没有提供内容" "用 --data <md> / --file <f> / 管道 stdin 传入内容"
+  # 引用解析: --previous/--parent 均可为块 id 或文档引用
+  if [[ -n "$prev" ]]; then
+    prev="$(sy_resolve_block insert-block "$prev")" || return $?
+  fi
+  if [[ -n "$parent" ]]; then
+    parent="$(sy_resolve_block insert-block "$parent")" || return $?
+  fi
   if [[ -n "$prev" && -z "$parent" ]]; then
     parent="$(sy_json insert-block sql "SELECT parent_id FROM blocks WHERE id='$prev'" |
       "$SY_NODE" "$SY_LIB_DIR/fmt.js" first-field parent_id)" || return $?
     if [[ -z "$parent" ]]; then
-      sy_die 1 "insert-block: 无法解析 previous 块的 parent" "显式传 --parent <doc-id>"
+      sy_die 1 "insert-block: 无法解析 previous 块的 parent" "显式传 --parent <doc>"
     fi
   fi
   local iargs=(block insert --parent "$parent" --data "$data")
   [[ -n "$prev" ]] && iargs+=(--previous "$prev")
   if [[ "$SY_MODE" == "text" ]]; then
-    # 抑制内核原始输出 (block insert 自身打印 ok), 统一单行 ok
+    # 抑制内核原始输出 (block insert 自身打印 ok), 统一输出父块 id
     sy_kernel_capture insert-block "${iargs[@]}" >/dev/null || return $?
-    echo "ok"
+    echo "$parent"
   else
     sy_kernel_capture insert-block "${iargs[@]}" >/dev/null || return $?
     case "$SY_MODE" in
@@ -437,7 +451,7 @@ sy_replace_doc() {
 #   ⚠ 先删文档下所有子块, 再写入新 markdown (标题块保留)
 # ---------------------------------------------------------------------------
 cmd_replace_doc() {
-  local id="${1:-}"
+  local doc_ref="${1:-}"
   shift
   local data="" file=""
   while [[ $# -gt 0 ]]; do
@@ -458,16 +472,18 @@ cmd_replace_doc() {
       sy_usage replace-doc
       return 0
       ;;
-    *) sy_die 2 "replace-doc: 未知参数 '$1'" "用法: siyuan replace-doc <doc-id> [--data <md> | --file <f> | stdin] [--json|--markdown]" ;;
+    *) sy_die 2 "replace-doc: 未知参数 '$1'" "用法: siyuan replace-doc <doc> [--data <md> | --file <f> | stdin] [--json|--markdown]" ;;
     esac
   done
-  [[ -n "$id" ]] || sy_die 2 "replace-doc: 缺少文档 id" "用法: siyuan replace-doc <doc-id> [--data <md> | --file <f> | stdin] [--json|--markdown]"
+  [[ -n "$doc_ref" ]] || sy_die 2 "replace-doc: 缺少文档引用" "用法: siyuan replace-doc <doc> [--data <md> | --file <f> | stdin] [--json|--markdown]"
   if [[ -z "$data" && -n "$file" ]]; then data="$(cat "$file")"; fi
   if [[ -z "$data" && ! -t 0 ]]; then data="$(cat)"; fi
   [[ -n "$data" ]] || sy_die 2 "replace-doc: 没有提供内容" "用 --data <md> / --file <f> / 管道 stdin 传入内容"
+  local id
+  id="$(sy_resolve_doc replace-doc "$doc_ref")" || return $?
   if [[ "$SY_MODE" == "text" ]]; then
     sy_replace_doc replace-doc "$id" "$data" --quiet || return $?
-    echo "ok"
+    echo "$id"
   else
     sy_replace_doc replace-doc "$id" "$data" --quiet || return $?
     local title
@@ -487,13 +503,17 @@ cmd_replace_doc() {
 # move <doc-id> --parent-id <pid> [--json|--markdown] — 移动文档 (同/跨笔记本均走 HTTP moveDocs)
 # ---------------------------------------------------------------------------
 cmd_move() {
-  local id="${1:-}"
+  local doc_ref="${1:-}"
   shift
-  local parent_id=""
+  local parent_ref="" nb_ref=""
   while [[ $# -gt 0 ]]; do
     case "$1" in
-    --parent-id | -p)
-      parent_id="${2:?}"
+    --parent | --parent-id | -p)
+      parent_ref="${2:?}"
+      shift 2
+      ;;
+    --notebook | -n)
+      nb_ref="${2:?}"
       shift 2
       ;;
     --json | --markdown)
@@ -504,31 +524,35 @@ cmd_move() {
       sy_usage move
       return 0
       ;;
-    *) sy_die 2 "move: 未知参数 '$1'" "用法: siyuan move <doc-id> --parent-id <parent-doc-id> [--json|--markdown]" ;;
+    *) sy_die 2 "move: 未知参数 '$1'" "用法: siyuan move <doc> (--parent <父文档>|--notebook <nb>) [--json|--markdown]" ;;
     esac
   done
-  if [[ -z "$id" || -z "$parent_id" ]]; then
-    sy_die 2 "move: 缺少文档 id 或 --parent-id" "用法: siyuan move <doc-id> --parent-id <parent-doc-id> [--json|--markdown]"
+  if [[ -z "$doc_ref" || ( -z "$parent_ref" && -z "$nb_ref" ) ]]; then
+    sy_die 2 "move: 缺少文档或 --parent/--notebook" "用法: siyuan move <doc> (--parent <父文档>|--notebook <nb>) [--json|--markdown] (同 mv, 引用支持 id/标题/路径)"
   fi
-  # 标题在移动前解析 (moveDocs 后 hpath 索引可能短暂滞后)
+  local id
+  id="$(sy_resolve_doc move "$doc_ref")" || return $?
+  # 标题在移动前解析 (移动后 hpath 索引可能短暂滞后)
   local title=""
   if [[ "$SY_MODE" != "text" ]]; then
     title="$(sy_doc_title move "$id")" || return $?
   fi
-  local from_path to_path nbid
-  from_path="$(sy_doc_path move "$id")"
-  to_path="$(sy_doc_path move "$parent_id")"
-  nbid="$(sy_json move sql "SELECT box FROM blocks WHERE id='$id'" |
-    "$SY_NODE" "$SY_LIB_DIR/fmt.js" first-field box)" || return $?
-  if [[ -z "$from_path" || -z "$to_path" || -z "$nbid" ]]; then
-    sy_die 1 "move: 无法解析文档路径" "用 'siyuan which $id' / 'siyuan which $parent_id' 确认文档存在"
+  local to_path="/" nbid=""
+  if [[ -n "$parent_ref" ]]; then
+    local parent_id
+    parent_id="$(sy_resolve_doc move "$parent_ref")" || return $?
+    to_path="$(sy_doc_path move "$parent_id")"
+    # 目标笔记本 = 父文档所在笔记本 (跨库自动, 同 mv 语义)
+    nbid="$(sy_json move sql "SELECT box FROM blocks WHERE id='$parent_id'" |
+      "$SY_NODE" "$SY_LIB_DIR/fmt.js" first-field box)" || return $?
+    if [[ -z "$to_path" || -z "$nbid" ]]; then
+      sy_die 1 "move: 无法解析文档路径" "用 'siyuan which $doc_ref' / 'siyuan which $parent_ref' 确认文档存在"
+    fi
+  else
+    nbid="$(sy_resolve_notebook move "$nb_ref")" || return $?
   fi
-  local rc=0
-  sy_http_api "/api/filetree/moveDocs" \
-    "{\"fromPaths\":[\"$from_path\"],\"toNotebook\":\"$nbid\",\"toPath\":\"$to_path\"}" >/dev/null || rc=$?
-  if [[ $rc -ne 0 ]]; then
-    sy_die 1 "move: 移动失败" "确认内核 HTTP API 在运行 (6806 端口)"
-  fi
+  # CLI document move (同 mv, 不依赖 HTTP serve)
+  sy_kernel_or_die move document move --id "$id" --notebook "$nbid" --path "$to_path" >/dev/null
   case "$SY_MODE" in
   json)
     printf '%s' "$id" | "$SY_NODE" "$SY_LIB_DIR/fmt.js" json-ok-doc "$id" "$title" 移动
@@ -537,7 +561,7 @@ cmd_move() {
     printf '%s' "$id" | "$SY_NODE" "$SY_LIB_DIR/fmt.js" md-ok-doc "$id" "$title" 移动
     ;;
   *)
-    echo "ok"
+    echo "$id"
     ;;
   esac
 }
@@ -559,7 +583,7 @@ sy_doc_delete() {
 # remove <doc-id> [--json|--markdown] — 删除文档 (CLI 失败时兜底 HTTP removeDocByID)
 # ---------------------------------------------------------------------------
 cmd_remove() {
-  local id="${1:-}"
+  local doc_ref="${1:-}"
   shift
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -571,10 +595,12 @@ cmd_remove() {
       sy_usage remove
       return 0
       ;;
-    *) sy_die 2 "remove: 未知参数 '$1'" "用法: siyuan remove <doc-id> [--json|--markdown]" ;;
+    *) sy_die 2 "remove: 未知参数 '$1'" "用法: siyuan remove <doc> [--json|--markdown]" ;;
     esac
   done
-  [[ -n "$id" ]] || sy_die 2 "remove: 缺少文档 id" "用法: siyuan remove <doc-id> [--json|--markdown]"
+  [[ -n "$doc_ref" ]] || sy_die 2 "remove: 缺少文档引用" "用法: siyuan remove <doc> [--json|--markdown] (同 rm, 引用支持 id/标题/路径)"
+  local id
+  id="$(sy_resolve_doc remove "$doc_ref")" || return $?
   # 标题在删除前解析 (删除后查不到)
   local title=""
   if [[ "$SY_MODE" != "text" ]]; then
@@ -589,7 +615,7 @@ cmd_remove() {
     printf '%s' "$id" | "$SY_NODE" "$SY_LIB_DIR/fmt.js" md-ok-remove "$id" "$title"
     ;;
   *)
-    : # 文本模式维持原行为 (无输出)
+    echo "$id"
     ;;
   esac
 }

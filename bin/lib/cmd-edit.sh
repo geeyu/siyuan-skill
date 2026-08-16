@@ -69,6 +69,10 @@ cmd_touch() {
   fi
   local nbid
   nbid="$(sy_resolve_notebook touch "$nb")" || return $?
+  # --parent 引用解析 (id/标题/路径)
+  if [[ -n "$parent_id" ]]; then
+    parent_id="$(sy_resolve_doc touch "$parent_id")" || return $?
+  fi
 
   local md=""
   if [[ -n "$data" ]]; then
@@ -195,7 +199,7 @@ cmd_mv() {
   local to_ref="" nb_ref=""
   while [[ $# -gt 0 ]]; do
     case "$1" in
-    --to)
+    --to | --parent | --parent-id)
       to_ref="${2:?}"
       shift 2
       ;;
@@ -207,10 +211,10 @@ cmd_mv() {
       sy_usage mv
       return 0
       ;;
-    *) sy_die 2 "mv: 未知参数 '$1'" "用法: siyuan mv <doc> --to <parent-id> [--notebook <nb>]" ;;
+    *) sy_die 2 "mv: 未知参数 '$1'" "用法: siyuan mv <doc> --parent <父文档> [--notebook <nb>] (别名 --to)" ;;
     esac
   done
-  [[ -n "$to_ref" || -n "$nb_ref" ]] || sy_die 2 "mv: 缺少 --to 或 --notebook" "用法: siyuan mv <doc> --to <parent-id> [--notebook <nb>]"
+  [[ -n "$to_ref" || -n "$nb_ref" ]] || sy_die 2 "mv: 缺少 --parent 或 --notebook" "用法: siyuan mv <doc> --parent <父文档> [--notebook <nb>] (别名 --to)"
 
   local doc
   doc="$(sy_resolve_doc mv "$doc_ref")" || return $?
@@ -250,7 +254,7 @@ cmd_cp() {
   local to_ref=""
   while [[ $# -gt 0 ]]; do
     case "$1" in
-    --to)
+    --to | --parent | --parent-id)
       to_ref="${2:?}"
       shift 2
       ;;
@@ -258,7 +262,7 @@ cmd_cp() {
       sy_usage cp
       return 0
       ;;
-    *) sy_die 2 "cp: 未知参数 '$1'" "用法: siyuan cp <doc> [--to <parent-id>]" ;;
+    *) sy_die 2 "cp: 未知参数 '$1'" "用法: siyuan cp <doc> [--parent <父文档>] (别名 --to)" ;;
     esac
   done
 
