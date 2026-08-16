@@ -290,13 +290,32 @@ sy_resolve_notebook() { # <ctx> <id或名字>
 #   规则: id 精确查; 含 / 的引用先按 hpath 精确匹配, 无匹配则尝试
 #         「笔记本名 + hPath」(如 /工作/调课, 或 find 输出直接复制的 工作/调课);
 #         仍无匹配回退标题搜索 (document search, 精确同名优先, 再宽松匹配)
-# 路径后缀匹配 (部分路径 /AI伴学 → hpath 后缀), LIKE 特殊字符转义
-sy_locate_suffix() { # <ctx> <去前导/的路径段> [box 限定] -> stdout: JSON 数组 (可为空)
-  local ctx="$1" seg="$2" box="${3:-}"
-  local esc="${seg//\'/\'\'}"
-  esc="${esc//%/\\%}"
-  esc="${esc//_/\\_}"
-  local sql="SELECT id, hpath, box FROM blocks WHERE hpath LIKE '%/$esc' AND type='d'"
+# glob 通配匹配 (显式模糊: /工作/*/AI伴学), * = 任意层级, ? = 单字符
+#   第一段为笔记本名时限定 box; 命中为空由上层报错, 多命中为正常结果
+sy_glob_match() { # <ctx> <pattern(路径, 可带前导/)> -> stdout: JSON 数组 (可为空)
+  local ctx="$1" pat="$2"
+  local work="${pat#/}"
+  local box="" seg="$work"
+  if [[ "$work" == */* ]]; then
+    local first nb
+    first="${work%%/*}"
+    nb="$(sy_resolve_notebook_soft "$ctx" "$first")" || return $?
+    if [[ -n "$nb" ]]; then
+      box="$nb"
+      seg="${work#*/}"
+    fi
+  fi
+  # glob → LIKE: \ → \\, % → \%, _ → \_, * → %, ? → _
+  #   * 匹配任意层级(含零层): pattern 以 * 开头时不加前导 /, LIKE '%/xxx' 天然含零层
+  local like="$seg"
+  like="${like//\\/\\\\}"
+  like="${like//%/\\%}"
+  like="${like//_/\\_}"
+  like="${like//\*/%}"
+  like="${like//\?/_}"
+  local hp="${like}"
+  [[ "$seg" != \** ]] && hp="/${like}"
+  local sql="SELECT id, hpath, box FROM blocks WHERE hpath LIKE '${hp}' AND type='d'"
   [[ -n "$box" ]] && sql+=" AND box='$box'"
   sy_json "$ctx" sql "$sql"
 }
@@ -308,16 +327,14 @@ sy_locate_suffix() { # <ctx> <去前导/的路径段> [box 限定] -> stdout: JS
 #     3. hpath 精确 (无笔记本名)
 #     4. 路径后缀匹配 (部分路径, 如 /AI伴学)
 #     5. 标题搜索 (精确同名优先; 无 / 引用先标题, 空则补后缀匹配目录名)
-# 文档引用统一解析链 (多匹配一律交给上层列候选):
-#   / 开头 (路径语义):
-#     a. 完整路径精确: hpath 整段 (含笔记本名时先试, 命中即用)
-#     b. 「笔记本名 + 剩余路径」精确 (find/ls 输出格式)
-#     c. 路径后缀匹配 (部分路径, 如 /AI伴学)
-#     d. 标题搜索回退
-#   无 / 开头:
-#     e. 含 / 时按 b/c 处理 (工作/调课)
-#     f. 标题搜索 (精确同名优先)
-#     g. 标题空则后缀匹配 (目录名场景, 如 cat AI伴学)
+# 文档引用解析链 (Linux 直觉: 路径必须真实存在, 不存在即报错; 模糊用显式 glob):
+#   / 开头或含 / (路径语义):
+#     a. glob 通配 (* ?) → 通配匹配, 多命中为正常结果
+#     b. 完整路径精确 (笔记本名 + 路径, 带不带前导 / 均可)
+#     c. hpath 精确 (无笔记本名)
+#     d. 均不中 → 返回空, 上层报「找不到」(不再隐式模糊)
+#   无 / (标题语义, 同文件名):
+#     e. 标题搜索 (document search, 精确同名优先), 多命中列候选
 sy_locate_docs() { # <ctx> <引用>
   local ctx="$1" ref="$2"
   local out names
@@ -329,56 +346,32 @@ sy_locate_docs() { # <ctx> <引用>
   fi
   local work="${ref#/}"
   local esc="${work//\'/\'\'}"
-  if [[ "$ref" == /* ]]; then
-    # a. hpath 整段精确
+  if [[ "$ref" == /* || "$work" == */* ]]; then
+    # a. 显式 glob
+    if [[ "$work" == *\** || "$work" == *\?* ]]; then
+      out="$(sy_glob_match "$ctx" "$ref")" || return $?
+      echo "$out" | NB_NAMES="$names" "$SY_NODE" "$SY_LIB_DIR/fmt.js" docs-sql
+      return 0
+    fi
+    # b. 完整路径精确: hpath 整段 (含笔记本名前缀的完整路径)
     out="$(sy_json "$ctx" sql "SELECT id, hpath, box FROM blocks WHERE hpath='/$esc' AND type='d'")" || return $?
     if [[ "$(echo "$out" | "$SY_NODE" "$SY_LIB_DIR/fmt.js" len)" -gt 0 ]]; then
       echo "$out" | NB_NAMES="$names" "$SY_NODE" "$SY_LIB_DIR/fmt.js" docs-sql
       return 0
     fi
-    # b. 笔记本前缀 + 剩余路径
-    if [[ "$work" == */* ]]; then
-      out="$(sy_locate_nbpath "$ctx" "$work")" || return $?
-      if [[ -n "$out" ]]; then
-        echo "$out" | NB_NAMES="$names" "$SY_NODE" "$SY_LIB_DIR/fmt.js" docs-sql
-        return 0
-      fi
-    fi
-    # c. 后缀匹配
-    out="$(sy_locate_suffix "$ctx" "$work")" || return $?
-    if [[ "$(echo "$out" | "$SY_NODE" "$SY_LIB_DIR/fmt.js" len)" -gt 0 ]]; then
-      echo "$out" | NB_NAMES="$names" "$SY_NODE" "$SY_LIB_DIR/fmt.js" docs-sql
-      return 0
-    fi
-  elif [[ "$work" == */* ]]; then
-    # e. 无前导 / 含 / (find 输出格式: 工作/调课): 先笔记本前缀, 再后缀
+    # c. 笔记本前缀 + 剩余路径
     out="$(sy_locate_nbpath "$ctx" "$work")" || return $?
     if [[ -n "$out" ]]; then
       echo "$out" | NB_NAMES="$names" "$SY_NODE" "$SY_LIB_DIR/fmt.js" docs-sql
       return 0
     fi
-    out="$(sy_locate_suffix "$ctx" "$work")" || return $?
-    if [[ "$(echo "$out" | "$SY_NODE" "$SY_LIB_DIR/fmt.js" len)" -gt 0 ]]; then
-      echo "$out" | NB_NAMES="$names" "$SY_NODE" "$SY_LIB_DIR/fmt.js" docs-sql
-      return 0
-    fi
-  fi
-  # d/f. 标题: document search, 精确同名优先
-  out="$(sy_json "$ctx" document search "$ref" |
-    "$SY_NODE" "$SY_LIB_DIR/fmt.js" docs-search 1 "" "" "$ref")" || return $?
-  if [[ "$(echo "$out" | "$SY_NODE" "$SY_LIB_DIR/fmt.js" len)" -gt 0 ]]; then
+    # d. 路径不存在: 返回空, 上层报错
     echo "$out"
     return 0
   fi
-  # g. 无 / 引用补后缀匹配 (目录名场景, 如 cat AI伴学)
-  if [[ "$work" != */* ]] && [[ -n "$work" ]]; then
-    out="$(sy_locate_suffix "$ctx" "$work")" || return $?
-    if [[ "$(echo "$out" | "$SY_NODE" "$SY_LIB_DIR/fmt.js" len)" -gt 0 ]]; then
-      echo "$out" | NB_NAMES="$names" "$SY_NODE" "$SY_LIB_DIR/fmt.js" docs-sql
-      return 0
-    fi
-  fi
-  echo "$out"
+  # e. 标题: document search, 精确同名优先
+  sy_json "$ctx" document search "$ref" |
+    "$SY_NODE" "$SY_LIB_DIR/fmt.js" docs-search 1 "" "" "$ref" || return $?
 }
 
 # 笔记本前缀路径精确匹配: 第一段为笔记本名时按 box + hpath 精确

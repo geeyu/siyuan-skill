@@ -70,7 +70,7 @@ cmd_ls() {
   if [[ -n "$nbsoft" && -z "$pth" ]]; then
     nbid="$nbsoft"
   else
-    # 文档引用定位 (单参: id/标题/任意路径; 双参兼容: 笔记本 + 路径, 拼合定位)
+    # 文档引用定位 (单参: id/标题/路径; 双参兼容: 笔记本 + 路径, 拼合定位)
     local target="$ref"
     [[ -n "$pth" ]] && target="${ref%/}${pth}"
     local out
@@ -78,7 +78,32 @@ cmd_ls() {
     local n
     n="$(echo "$out" | "$SY_NODE" "$SY_LIB_DIR/fmt.js" len)"
     if [[ "$n" -eq 0 ]]; then
-      sy_die 1 "ls: 找不到 '$target'" "用 'siyuan find $target' 搜相近文档, 或 'siyuan ls' 看笔记本结构"
+      sy_die 1 "ls: 找不到 '$target'" "路径必须完整存在 (模糊用显式通配, 如 'siyuan ls /*/调课'); 或 'siyuan find $target' 搜标题"
+    fi
+    # glob 显式通配: 多命中列出文档本身 (Linux 通配展开语义, 非歧义)
+    if [[ "$n" -gt 1 && "$target" == *\** || "$n" -gt 1 && "$target" == *\?* ]]; then
+      local idlist
+      idlist="$(echo "$out" | "$SY_NODE" "$SY_LIB_DIR/fmt.js" ids | sed "s/.*/'&'/" | paste -sd, -)"
+      local dout
+      dout="$(sy_json ls sql "SELECT id, content AS name, path, 0 AS size, 0 AS subFileCount, updated AS mtime, box FROM blocks WHERE id IN ($idlist) ORDER BY hpath")" || return $?
+      case "$SY_MODE" in
+      json)
+        echo "$dout" | "$SY_NODE" "$SY_LIB_DIR/fmt.js" pick id name path size subFileCount mtime
+        ;;
+      markdown)
+        local nbname
+        nbname="$(sy_nb_name ls "$nbid")" || return $?
+        echo "$dout" | NB_NAME="$nbname" "$SY_NODE" "$SY_LIB_DIR/fmt.js" md-ls-docs
+        ;;
+      *)
+        if [[ $long -eq 1 ]]; then
+          echo "$dout" | "$SY_NODE" "$SY_LIB_DIR/fmt.js" ls-doc-long
+        else
+          echo "$dout" | sy_tsv id name
+        fi
+        ;;
+      esac
+      return 0
     fi
     if [[ "$n" -gt 1 ]]; then
       local names
