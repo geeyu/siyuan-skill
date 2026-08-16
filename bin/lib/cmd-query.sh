@@ -100,16 +100,31 @@ cmd_ls() {
     if [[ "${args[0]:-}" =~ ^/[0-9]{14}-[a-z0-9]{6,8}(/|$) ]] || [[ "${args[1]:-}" =~ ^/[0-9]{14}-[a-z0-9]{6,8}(/|$) ]]; then
       dargs+=(--path "${args[1]:-${args[0]}}")
     else
-      # 子文档数: 0 则空列表 (目录/叶子文档统一空输出)
+      # 子文档数: 0 则显示文档本身 (Linux ls 文件语义, 区分「存在但空」与「不存在」)
       local esc
       esc="${pure_hpath//\'/\'\'}"
       local sub
       sub="$(sy_json ls sql "SELECT count(*) AS cnt FROM blocks WHERE hpath LIKE '${esc}/%' AND type='d'" |
         "$SY_NODE" "$SY_LIB_DIR/fmt.js" first-field cnt)" || return $?
       if [[ "$sub" == "0" ]]; then
+        local dout
+        dout="$(sy_json ls sql "SELECT id, content AS name, path, 0 AS size, 0 AS subFileCount, updated AS mtime, box FROM blocks WHERE id='$doc_id'")" || return $?
         case "$SY_MODE" in
-        json) echo '[]' ;;
-        *) : ;;
+        json)
+          echo "$dout" | "$SY_NODE" "$SY_LIB_DIR/fmt.js" pick id name path size subFileCount mtime
+          ;;
+        markdown)
+          local nbname
+          nbname="$(sy_nb_name ls "$nbid")" || return $?
+          echo "$dout" | NB_NAME="$nbname" "$SY_NODE" "$SY_LIB_DIR/fmt.js" md-ls-docs
+          ;;
+        *)
+          if [[ $long -eq 1 ]]; then
+            echo "$dout" | "$SY_NODE" "$SY_LIB_DIR/fmt.js" ls-doc-long
+          else
+            echo "$dout" | sy_tsv id name
+          fi
+          ;;
         esac
         return 0
       fi
