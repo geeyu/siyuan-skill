@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# siyuan av 子命令组 (属性视图 / 数据库): list / keys / rows / get / add / update /
+# siyuan db 子命令组 (属性视图 / 数据库; 别名 av): list / keys / rows / get / add / update /
 #   remove / verify / export
 #
 # 适配 SiYuan-Kernel 3.8.0 breaking 变更:
@@ -18,33 +18,33 @@ av_usage() { # [子命令]
   case "${1:-}" in
   list)
     cat <<'EOF'
-用法: siyuan av list [--json|--markdown]
+用法: siyuan db list [--json|--markdown]
     列出全部数据库 (名称+avID+所在路径); --markdown 表格
 EOF
     ;;
   keys)
     cat <<'EOF'
-用法: siyuan av keys <avID|库名> [--json|--markdown]
+用法: siyuan db keys <avID|库名> [--json|--markdown]
     列字段 (name, type, keyID; 3.8.0 keys 为 {id,name,keys:[]} 对象, 已适配 B1)
     --markdown 表格
 EOF
     ;;
   rows)
     cat <<'EOF'
-用法: siyuan av rows <avID|库名> [--limit N] [-H] [--json|--markdown]
+用法: siyuan db rows <avID|库名> [--limit N] [-H] [--json|--markdown]
     列行数据 (走 database render, 适配 B2); 文本=TSV 可管道: itemID<TAB>标题<TAB>字段值...
     -H 输出表头; --json 输出 [{itemID,title,fields:{字段名:值}}]; --markdown 表格
 EOF
     ;;
   get)
     cat <<'EOF'
-用法: siyuan av get <avID|库名> --row <rowID> [--json|--markdown]
+用法: siyuan db get <avID|库名> --row <rowID> [--json|--markdown]
     单行详情 (标题 + 每字段实际值); --markdown 键值表
 EOF
     ;;
   add)
     cat <<'EOF'
-用法: siyuan av add <avID|库名> --values '<JSON>' [--content <标题>] [--block <doc-id>] [--json|--markdown]
+用法: siyuan db add <avID|库名> --values '<JSON>' [--content <标题>] [--block <doc-id>] [--json|--markdown]
     加一行 (默认游离行; --block 绑定文档块)。--values 为 {字段名: 值} JSON,
     值按字段类型自动嵌套 (select 用 mSelect / date 自动转毫秒 / checkbox 布尔)。
     含引号的值用 --values @file 或管道 stdin 传入。输出新行 itemID (文本) /
@@ -53,27 +53,27 @@ EOF
     ;;
   update)
     cat <<'EOF'
-用法: siyuan av update <avID|库名> --row <rowID> --values '<JSON>' [--json|--markdown]
+用法: siyuan db update <avID|库名> --row <rowID> --values '<JSON>' [--json|--markdown]
     改行字段 (同 add 的值规则)。item update 的 ok 不可信, 写后 render 验证,
     验证失败退出 1 并提示实际值。
 EOF
     ;;
   remove)
     cat <<'EOF'
-用法: siyuan av remove <avID|库名> --row <rowID> [--json|--markdown]
+用法: siyuan db remove <avID|库名> --row <rowID> [--json|--markdown]
     删行, 删后 render 验证行已消失
 EOF
     ;;
   verify)
     cat <<'EOF'
-用法: siyuan av verify <avID|库名> [--json|--markdown]
+用法: siyuan db verify <avID|库名> [--json|--markdown]
     逐行打印所有字段实际值 (验证写入的权威入口)
     --markdown 表格
 EOF
     ;;
   export)
     cat <<'EOF'
-用法: siyuan av export <avID|库名>
+用法: siyuan db export <avID|库名>
   导出全量 JSON (备份/迁移): [{itemID,docID,title,fields:{字段名:值}}]
 EOF
     ;;
@@ -145,7 +145,7 @@ sy_av_read_values() { # <raw>  (空 = stdin)
   local raw="${1:-}"
   if [[ -z "$raw" ]]; then
     if [[ -t 0 ]]; then
-      sy_die 2 "av: 缺少 --values" "传 '{字段:值}' JSON, 或 --values @file / 管道 stdin (含引号值用后两者)"
+      sy_die 2 "$SY_CMD_NAME: 缺少 --values" "传 '{字段:值}' JSON, 或 --values @file / 管道 stdin (含引号值用后两者)"
     fi
     cat
   elif [[ "$raw" == "-" ]]; then
@@ -207,7 +207,7 @@ cmd_av_list() {
       av_usage list
       return 0
       ;;
-    *) sy_die 2 "av list: 未知参数 '$1'" "用法: siyuan av list [--json|--markdown]" ;;
+    *) sy_die 2 "av list: 未知参数 '$1'" "用法: siyuan db list [--json|--markdown]" ;;
     esac
   done
   local out
@@ -241,18 +241,18 @@ cmd_av_keys() {
       av_usage keys
       return 0
       ;;
-    -*) sy_die 2 "av keys: 未知参数 '$1'" "用法: siyuan av keys <avID|库名> [--json|--markdown]" ;;
+    -*) sy_die 2 "av keys: 未知参数 '$1'" "用法: siyuan db keys <avID|库名> [--json|--markdown]" ;;
     *)
       if [[ -z "$av" ]]; then
         av="$1"
       else
-        sy_die 2 "av keys: 多余参数 '$1'" "用法: siyuan av keys <avID|库名> [--json|--markdown]"
+        sy_die 2 "av keys: 多余参数 '$1'" "用法: siyuan db keys <avID|库名> [--json|--markdown]"
       fi
       shift
       ;;
     esac
   done
-  [[ -n "$av" ]] || sy_die 2 "av keys: 缺少 avID" "用法: siyuan av keys <avID|库名> [--json|--markdown] (用 'siyuan av list' 查 avID)"
+  [[ -n "$av" ]] || sy_die 2 "av keys: 缺少 avID" "用法: siyuan db keys <avID|库名> [--json|--markdown] (用 'siyuan av list' 查 avID)"
   av="$(sy_av_resolve "av keys" "$av")" || return $?
   local out
   out="$(sy_json "av keys" database keys --av "$av")" || return $?
@@ -285,7 +285,7 @@ cmd_av_rows() {
       ;;
     --limit | -l)
       limit="${2:?}"
-      [[ "$limit" =~ ^[0-9]+$ ]] || sy_die 2 "av rows: --limit 必须是数字, 收到 '$limit'" "用法: siyuan av rows <avID|库名> [--limit N] [-H] [--json|--markdown]"
+      [[ "$limit" =~ ^[0-9]+$ ]] || sy_die 2 "av rows: --limit 必须是数字, 收到 '$limit'" "用法: siyuan db rows <avID|库名> [--limit N] [-H] [--json|--markdown]"
       shift 2
       ;;
     --header | -H)
@@ -296,18 +296,18 @@ cmd_av_rows() {
       av_usage rows
       return 0
       ;;
-    -*) sy_die 2 "av rows: 未知参数 '$1'" "用法: siyuan av rows <avID|库名> [--limit N] [-H] [--json|--markdown]" ;;
+    -*) sy_die 2 "av rows: 未知参数 '$1'" "用法: siyuan db rows <avID|库名> [--limit N] [-H] [--json|--markdown]" ;;
     *)
       if [[ -z "$av" ]]; then
         av="$1"
       else
-        sy_die 2 "av rows: 多余参数 '$1'" "用法: siyuan av rows <avID|库名> [--limit N] [-H] [--json|--markdown]"
+        sy_die 2 "av rows: 多余参数 '$1'" "用法: siyuan db rows <avID|库名> [--limit N] [-H] [--json|--markdown]"
       fi
       shift
       ;;
     esac
   done
-  [[ -n "$av" ]] || sy_die 2 "av rows: 缺少 avID" "用法: siyuan av rows <avID|库名> [--limit N] [-H] [--json|--markdown]"
+  [[ -n "$av" ]] || sy_die 2 "av rows: 缺少 avID" "用法: siyuan db rows <avID|库名> [--limit N] [-H] [--json|--markdown]"
   av="$(sy_av_resolve "av rows" "$av")" || return $?
   local rd
   rd="$(sy_av_render_all "av rows" "$av" "$limit")" || return $?
@@ -344,19 +344,19 @@ cmd_av_get() {
       av_usage get
       return 0
       ;;
-    -*) sy_die 2 "av get: 未知参数 '$1'" "用法: siyuan av get <avID|库名> --row <rowID> [--json|--markdown]" ;;
+    -*) sy_die 2 "av get: 未知参数 '$1'" "用法: siyuan db get <avID|库名> --row <rowID> [--json|--markdown]" ;;
     *)
       if [[ -z "$av" ]]; then
         av="$1"
       else
-        sy_die 2 "av get: 多余参数 '$1'" "用法: siyuan av get <avID|库名> --row <rowID> [--json|--markdown]"
+        sy_die 2 "av get: 多余参数 '$1'" "用法: siyuan db get <avID|库名> --row <rowID> [--json|--markdown]"
       fi
       shift
       ;;
     esac
   done
-  [[ -n "$av" ]] || sy_die 2 "av get: 缺少 avID" "用法: siyuan av get <avID|库名> --row <rowID> [--json|--markdown]"
-  [[ -n "$row" ]] || sy_die 2 "av get: 缺少 --row" "用法: siyuan av get <avID|库名> --row <rowID> [--json|--markdown] (rowID 用 'siyuan av rows' 查看)"
+  [[ -n "$av" ]] || sy_die 2 "av get: 缺少 avID" "用法: siyuan db get <avID|库名> --row <rowID> [--json|--markdown]"
+  [[ -n "$row" ]] || sy_die 2 "av get: 缺少 --row" "用法: siyuan db get <avID|库名> --row <rowID> [--json|--markdown] (rowID 用 'siyuan av rows' 查看)"
   av="$(sy_av_resolve "av get" "$av")" || return $?
   local rd
   rd="$(sy_av_render_all "av get" "$av")" || return $?
@@ -383,7 +383,7 @@ cmd_av_add() {
   while [[ $# -gt 0 ]]; do
     case "$1" in
     --values | -v)
-      [[ -n "$values_raw" ]] && sy_die 2 "av add: 重复 --values" "用法: siyuan av add <avID|库名> --values '<JSON>' (或 --values @file / stdin)"
+      [[ -n "$values_raw" ]] && sy_die 2 "av add: 重复 --values" "用法: siyuan db add <avID|库名> --values '<JSON>' (或 --values @file / stdin)"
       values_raw="${2:?}"
       shift 2
       ;;
@@ -403,18 +403,18 @@ cmd_av_add() {
       av_usage add
       return 0
       ;;
-    -*) sy_die 2 "av add: 未知参数 '$1'" "用法: siyuan av add <avID|库名> --values '<JSON>' [--content <标题>] [--block <doc-id>] [--json|--markdown]" ;;
+    -*) sy_die 2 "av add: 未知参数 '$1'" "用法: siyuan db add <avID|库名> --values '<JSON>' [--content <标题>] [--block <doc-id>] [--json|--markdown]" ;;
     *)
       if [[ -z "$av" ]]; then
         av="$1"
       else
-        sy_die 2 "av add: 多余参数 '$1'" "用法: siyuan av add <avID|库名> --values '<JSON>' [--content <标题>] [--block <doc-id>]"
+        sy_die 2 "av add: 多余参数 '$1'" "用法: siyuan db add <avID|库名> --values '<JSON>' [--content <标题>] [--block <doc-id>]"
       fi
       shift
       ;;
     esac
   done
-  [[ -n "$av" ]] || sy_die 2 "av add: 缺少 avID" "用法: siyuan av add <avID|库名> --values '<JSON>'"
+  [[ -n "$av" ]] || sy_die 2 "av add: 缺少 avID" "用法: siyuan db add <avID|库名> --values '<JSON>'"
   if [[ -z "$values_raw" && -t 0 ]]; then
     sy_die 2 "av add: 缺少 --values" "传 '{字段:值}' JSON, 或 --values @file / 管道 stdin (含引号值用后两者)"
   fi
@@ -478,7 +478,7 @@ cmd_av_update() {
   while [[ $# -gt 0 ]]; do
     case "$1" in
     --values | -v)
-      [[ -n "$values_raw" ]] && sy_die 2 "av update: 重复 --values" "用法: siyuan av update <avID|库名> --row <rowID> --values '<JSON>' (或 --values @file / stdin)"
+      [[ -n "$values_raw" ]] && sy_die 2 "av update: 重复 --values" "用法: siyuan db update <avID|库名> --row <rowID> --values '<JSON>' (或 --values @file / stdin)"
       values_raw="${2:?}"
       shift 2
       ;;
@@ -494,19 +494,19 @@ cmd_av_update() {
       av_usage update
       return 0
       ;;
-    -*) sy_die 2 "av update: 未知参数 '$1'" "用法: siyuan av update <avID|库名> --row <rowID> --values '<JSON>' [--json|--markdown]" ;;
+    -*) sy_die 2 "av update: 未知参数 '$1'" "用法: siyuan db update <avID|库名> --row <rowID> --values '<JSON>' [--json|--markdown]" ;;
     *)
       if [[ -z "$av" ]]; then
         av="$1"
       else
-        sy_die 2 "av update: 多余参数 '$1'" "用法: siyuan av update <avID|库名> --row <rowID> --values '<JSON>'"
+        sy_die 2 "av update: 多余参数 '$1'" "用法: siyuan db update <avID|库名> --row <rowID> --values '<JSON>'"
       fi
       shift
       ;;
     esac
   done
-  [[ -n "$av" ]] || sy_die 2 "av update: 缺少 avID" "用法: siyuan av update <avID|库名> --row <rowID> --values '<JSON>'"
-  [[ -n "$row" ]] || sy_die 2 "av update: 缺少 --row" "用法: siyuan av update <avID|库名> --row <rowID> --values '<JSON>'"
+  [[ -n "$av" ]] || sy_die 2 "av update: 缺少 avID" "用法: siyuan db update <avID|库名> --row <rowID> --values '<JSON>'"
+  [[ -n "$row" ]] || sy_die 2 "av update: 缺少 --row" "用法: siyuan db update <avID|库名> --row <rowID> --values '<JSON>'"
   if [[ -z "$values_raw" && -t 0 ]]; then
     sy_die 2 "av update: 缺少 --values" "传 '{字段:值}' JSON, 或 --values @file / 管道 stdin"
   fi
@@ -560,19 +560,19 @@ cmd_av_remove() {
       av_usage remove
       return 0
       ;;
-    -*) sy_die 2 "av remove: 未知参数 '$1'" "用法: siyuan av remove <avID|库名> --row <rowID> [--json|--markdown]" ;;
+    -*) sy_die 2 "av remove: 未知参数 '$1'" "用法: siyuan db remove <avID|库名> --row <rowID> [--json|--markdown]" ;;
     *)
       if [[ -z "$av" ]]; then
         av="$1"
       else
-        sy_die 2 "av remove: 多余参数 '$1'" "用法: siyuan av remove <avID|库名> --row <rowID>"
+        sy_die 2 "av remove: 多余参数 '$1'" "用法: siyuan db remove <avID|库名> --row <rowID>"
       fi
       shift
       ;;
     esac
   done
-  [[ -n "$av" ]] || sy_die 2 "av remove: 缺少 avID" "用法: siyuan av remove <avID|库名> --row <rowID>"
-  [[ -n "$row" ]] || sy_die 2 "av remove: 缺少 --row" "用法: siyuan av remove <avID|库名> --row <rowID> (rowID 用 'siyuan av rows' 查看)"
+  [[ -n "$av" ]] || sy_die 2 "av remove: 缺少 avID" "用法: siyuan db remove <avID|库名> --row <rowID>"
+  [[ -n "$row" ]] || sy_die 2 "av remove: 缺少 --row" "用法: siyuan db remove <avID|库名> --row <rowID> (rowID 用 'siyuan av rows' 查看)"
   av="$(sy_av_resolve "av remove" "$av")" || return $?
 
   local rd has
@@ -614,18 +614,18 @@ cmd_av_verify() {
       av_usage verify
       return 0
       ;;
-    -*) sy_die 2 "av verify: 未知参数 '$1'" "用法: siyuan av verify <avID|库名> [--json|--markdown]" ;;
+    -*) sy_die 2 "av verify: 未知参数 '$1'" "用法: siyuan db verify <avID|库名> [--json|--markdown]" ;;
     *)
       if [[ -z "$av" ]]; then
         av="$1"
       else
-        sy_die 2 "av verify: 多余参数 '$1'" "用法: siyuan av verify <avID|库名> [--json|--markdown]"
+        sy_die 2 "av verify: 多余参数 '$1'" "用法: siyuan db verify <avID|库名> [--json|--markdown]"
       fi
       shift
       ;;
     esac
   done
-  [[ -n "$av" ]] || sy_die 2 "av verify: 缺少 avID" "用法: siyuan av verify <avID|库名> [--json|--markdown]"
+  [[ -n "$av" ]] || sy_die 2 "av verify: 缺少 avID" "用法: siyuan db verify <avID|库名> [--json|--markdown]"
   av="$(sy_av_resolve "av verify" "$av")" || return $?
   local rd
   rd="$(sy_av_render_all "av verify" "$av")" || return $?
@@ -652,7 +652,7 @@ cmd_av_export() {
     av_usage export
     return 0
   fi
-  [[ -n "$av" ]] || sy_die 2 "av export: 缺少 avID" "用法: siyuan av export <avID|库名>"
+  [[ -n "$av" ]] || sy_die 2 "av export: 缺少 avID" "用法: siyuan db export <avID|库名>"
   av="$(sy_av_resolve "av export" "$av")" || return $?
   local rd
   rd="$(sy_av_render_all "av export" "$av")" || return $?
@@ -677,7 +677,7 @@ cmd_av() {
       av_usage
       return 0
     fi
-    sy_die 2 "av: 未知子命令 '$sub'" "用法: siyuan av list|keys|rows|get|add|update|remove|verify|export (详见 siyuan help av)"
+    sy_die 2 "$SY_CMD_NAME: 未知子命令 '$sub'" "用法: siyuan db list|keys|rows|get|add|update|remove|verify|export (详见 siyuan help av)"
     ;;
   esac
 }

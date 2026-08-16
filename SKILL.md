@@ -13,7 +13,7 @@ description: >
 | 层 | 文档 | 什么时候读 |
 | ---- | ------ | ----------- |
 | 入口 | **本文 (SKILL.md)** | 立刻开始干活: 引用协议 + 速查 + 约定 |
-| 详情 | [references/commands.md](references/commands.md) | 封装命令的完整参数/输出/示例/组合 (含数据库 av 命令组) |
+| 详情 | [references/commands.md](references/commands.md) | 封装命令的完整参数/输出/示例/组合 (含数据库 db 命令组) |
 | 底层 | [references/raw-commands.md](references/raw-commands.md) | 封装满足不了时, 原始内核命令 (或 `siyuan raw-help <cmd>` 实时查) |
 | 踩坑 | [references/conventions.md](references/conventions.md) | 批量整理等事故规范 |
 
@@ -86,12 +86,12 @@ shell 风格命令集 (像操作 Linux 一样操作思源): 默认人类可读�
 ### 数据库 (AV) — 完整参考见 commands.md「四、数据库」
 
 ```bash
-siyuan av list                          # 全部数据库
-siyuan av rows <avID> [--limit N]       # 行数据
-siyuan av add <avID> --values '<JSON>' [--content 标题] [--block <doc>]   # 加行
-siyuan av update <avID> --row <行ID> --values '<JSON>'                    # 改行
-siyuan av verify <avID>                 # 验证 (权威入口, item update 的 ok 不可信)
-siyuan av export <avID>                 # 备份
+siyuan db list                          # 全部数据库
+siyuan db rows <avID> [--limit N]       # 行数据
+siyuan db add <avID> --values '<JSON>' [--content 标题] [--block <doc>]   # 加行
+siyuan db update <avID> --row <行ID> --values '<JSON>'                    # 改行
+siyuan db verify <avID>                 # 验证 (权威入口, item update 的 ok 不可信)
+siyuan db export <avID>                 # 备份
 ```
 
 ### 底层透传 (封装满足不了时)
@@ -169,7 +169,7 @@ ls /AI伴学/待办实现 | while read -r id name; do siyuan mv "$id" --parent <
 - **SQL 查到旧数据**: 索引滞后, `sleep 2-3` 重试, 或 `cat` 验证
 - **引用报"找不到"**: 路径必须完整真实; 模糊用通配 `/*/xxx`; 记不清用 `find` 搜标题
 - **引用报"有 N 个匹配"**: 同名歧义, 用完整路径消歧或 `-v` 看候选
-- **数据库写入不生效**: `siyuan av verify` 验证 (item update 的 ok 不可信)
+- **数据库写入不生效**: `siyuan db verify` 验证 (item update 的 ok 不可信)
 
 ## 工作区信息
 

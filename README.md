@@ -17,7 +17,7 @@ echo 'alias siyuan=~/.pi/skills/siyuan/bin/siyuan' >> ~/.zshrc
 ```
 SKILL.md (入口)                 引用协议 + 命令速查 + 高频坑 → 立刻能干活
   ↓ 需要命令细节
-references/commands.md          ★ 封装命令完整参考 (参数/输出/示例/组合, 含数据库 av 命令组)
+references/commands.md          ★ 封装命令完整参考 (参数/输出/示例/组合, 含数据库 db 命令组)
   ↓ 封装不满足
 references/raw-commands.md      底层原始命令 (24 类, 或 raw-help 实时查)
   ↓ 踩坑沉淀
@@ -32,7 +32,7 @@ references/conventions.md       批量整理等事故规范
   - `bin/lib/cmd-misc.sh` — sql/raw/raw-help/children/backlinks
   - `bin/lib/cmd-write.sh` — 底层写入组 (write/append/insert-block/update-block/delete-block/replace-doc/move/remove)
   - `bin/lib/cmd-edit.sh` — shell 风格编辑组 (touch/edit/mv/cp/rm/diff/rename)
-  - `bin/lib/cmd-av.sh` — av 命令组 (适配 3.8.0 B1/B2)
+  - `bin/lib/cmd-av.sh` — db 命令组 (适配 3.8.0 B1/B2, 别名 av)
   - `bin/lib/fmt.js` — node 数据格式化助手
 - `scripts/smoke-markdown.sh` — 开发自测冒烟脚本
 
@@ -76,7 +76,7 @@ siyuan mv <doc> --parent <父文档>        # 移动 (同/跨笔记本, 别名 -
 siyuan cp <doc> --parent <父文档>        # 复制
 siyuan diff <docA> <docB>               # 对比两文档 (统一 diff)
 siyuan rm <doc>                         # 删除
-siyuan av list                          # 数据库列表 (见 references/commands.md)
+siyuan db list                          # 数据库列表 (见 references/commands.md)
 siyuan raw database search "库名"       # 底层透传
 ```
 

@@ -62,7 +62,7 @@ sy_register cp              cmd_cp
 sy_register rm              cmd_rm
 sy_register diff            cmd_diff
 sy_register rename          cmd_rename
-sy_register av               cmd_av
+sy_register db               cmd_av av
 sy_register raw             cmd_raw
 sy_register raw-help        cmd_raw_help
 sy_register help            cmd_help
@@ -121,16 +121,16 @@ siyuan — 思源笔记命令行 (基于 SiYuan-Kernel 3.8+, shell 风格)
   move <doc> --parent <父文档>          移动文档 (同 mv)
   remove <doc>                         删除文档 (同 rm)
 
-数据库 (属性视图, 适配 3.8.0):
-  av list [--json|--markdown]         列出全部数据库 (名称+avID)
-  av keys <avID> [--json|--markdown]  列字段
-  av rows <avID> [--limit N] [-H] [--json|--markdown]  列行数据 (走 render)
-  av get <avID> --row <rowID> [--json|--markdown]  单行详情
-  av add <avID> --values '<JSON>' [--content <标题>] [--block <doc-id>] [--json|--markdown]  加行
-  av update <avID> --row <rowID> --values '<JSON>' [--json|--markdown]  改行 (写后验证)
-  av remove <avID> --row <rowID> [--json|--markdown]  删行
-  av verify <avID> [--json|--markdown] 逐行打印实际值 (验证权威入口)
-  av export <avID>                   导出全量 JSON (备份)
+数据库 (属性视图, 适配 3.8.0; 别名 av):
+  db list [--json|--markdown]         列出全部数据库 (名称+avID)
+  db keys <avID> [--json|--markdown]  列字段
+  db rows <avID> [--limit N] [-H] [--json|--markdown]  列行数据 (走 render)
+  db get <avID> --row <rowID> [--json|--markdown]  单行详情
+  db add <avID> --values '<JSON>' [--content <标题>] [--block <doc-id>] [--json|--markdown]  加行
+  db update <avID> --row <rowID> --values '<JSON>' [--json|--markdown]  改行 (写后验证)
+  db remove <avID> --row <rowID> [--json|--markdown]  删行
+  db verify <avID> [--json|--markdown] 逐行打印实际值 (验证权威入口)
+  db export <avID>                   导出全量 JSON (备份)
 
 底层:
   raw <args...>                        透传 SiYuan-Kernel (自带 -w, 默认 table; --markdown 原样无转换)
@@ -320,10 +320,12 @@ EOF
   删除文档 (同 rm); 引用支持 id/标题/路径; 输出文档 id
 EOF
 ;;
-    av|raw|raw-help)
+    db|av|raw|raw-help)
       usage >&2
-      if [[ -n "${1:-}" && "$1" == av* ]]; then
-        av_usage "${1#av }"
+      if [[ -n "${1:-}" && "$1" =~ ^(db|av) ]]; then
+        local sub="${1#db }"
+        [[ "$1" == av* ]] && sub="${1#av }"
+        av_usage "$sub"
       else
         usage >&2
       fi

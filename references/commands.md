@@ -244,7 +244,7 @@ siyuan rename <doc> <新标题>
 1. **数据库必须先在思源 App 里创建** (插入块 → 数据库视图)。CLI 只能操作已存在的数据库。
 2. **拿到 avID**: 数据库是嵌在文档里的块, avID 是该块的 ID (≠ 文档 ID):
    ```bash
-   siyuan av list                          # 列出全部数据库 (avID+名称+路径)
+   siyuan db list                          # 列出全部数据库 (avID+名称+路径)
    siyuan raw database search "排查记录"    # 或按名称搜
    ```
    `<avID|库名>` 参数支持传 avID 或库名 (模糊搜首个匹配)。
@@ -253,15 +253,15 @@ siyuan rename <doc> <新标题>
 
 | 命令 | 作用 |
 |------|------|
-| `av list [--json\|--markdown]` | 列出全部数据库 |
-| `av keys <avID> [--json\|--markdown]` | 列字段 (name/type/keyID) |
-| `av rows <avID> [--limit N] [-H] [--json\|--markdown]` | 列行数据 (文本=TSV 可管道) |
-| `av get <avID> --row <行ID> [--json\|--markdown]` | 单行详情 |
-| `av add <avID> --values '<JSON>' [--content 标题] [--block <doc>]` | 加行 (自动反查 itemID, 写后验证) |
-| `av update <avID> --row <行ID> --values '<JSON>'` | 改行 (写后验证, 失败退出 1) |
-| `av remove <avID> --row <行ID>` | 删行 (删后验证) |
-| `av verify <avID> [--json\|--markdown]` | 逐行打印实际值 (**验证权威入口**) |
-| `av export <avID>` | 导出全量 JSON (备份/迁移) |
+| `db list [--json\|--markdown]` | 列出全部数据库 |
+| `db keys <avID> [--json\|--markdown]` | 列字段 (name/type/keyID) |
+| `db rows <avID> [--limit N] [-H] [--json\|--markdown]` | 列行数据 (文本=TSV 可管道) |
+| `db get <avID> --row <行ID> [--json\|--markdown]` | 单行详情 |
+| `db add <avID> --values '<JSON>' [--content 标题] [--block <doc>]` | 加行 (自动反查 itemID, 写后验证) |
+| `db update <avID> --row <行ID> --values '<JSON>'` | 改行 (写后验证, 失败退出 1) |
+| `db remove <avID> --row <行ID>` | 删行 (删后验证) |
+| `db verify <avID> [--json\|--markdown]` | 逐行打印实际值 (**验证权威入口**) |
+| `db export <avID>` | 导出全量 JSON (备份/迁移) |
 
 ### 值规则 (`--values`)
 
@@ -287,15 +287,15 @@ siyuan rename <doc> <新标题>
 
 ```bash
 AV=20260709112905-e1gm9bd  # 排查记录库 (或 av list 动态查)
-siyuan av keys "$AV"                                       # 1. 查字段名
+siyuan db keys "$AV"                                       # 1. 查字段名
 DOC=$(cat report.md | siyuan write --notebook 工作 --title "排查：XXX" --parent "<目录>")  # 2. 写排查文档
-ITEM=$(siyuan av add "$AV" --block "$DOC" --content "排查：XXX" \\
+ITEM=$(siyuan db add "$AV" --block "$DOC" --content "排查：XXX" \\
   --values '{"报告日期":"2026-07-08","业务模块":"调课调讲","问题状态":"已解决"}')   # 3. 加行 (输出 itemID)
 cat > /tmp/v.json <<'EOF'                                  # 4. 改值 (含引号走文件)
 {"排查结论":"含\"引号\"的结论","标签":["快速"],"责任人":"张三"}
 EOF
-siyuan av update "$AV" --row "$ITEM" --values @/tmp/v.json
-siyuan av verify "$AV"                                     # 5. ⚠ 验证 (ok 不代表成功)
+siyuan db update "$AV" --row "$ITEM" --values @/tmp/v.json
+siyuan db verify "$AV"                                     # 5. ⚠ 验证 (ok 不代表成功)
 ```
 
 ### 排查记录库字段设计 (当前规范)
