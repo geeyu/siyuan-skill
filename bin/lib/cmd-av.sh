@@ -79,7 +79,7 @@ EOF
     ;;
   *)
     cat <<'EOF'
-siyuan av — 数据库 (属性视图) 子命令组 (适配 SiYuan-Kernel 3.8.0 B1/B2)
+siyuan db — 数据库 (属性视图) 子命令组 (适配 SiYuan-Kernel 3.8.0 B1/B2)
 
   av list [--json|--markdown]    列出全部数据库 (名称+avID)
   av keys <avID> [--json|--markdown]   列字段 (3.8 keys 对象包装已适配)
@@ -109,7 +109,7 @@ sy_av_resolve() { # <ctx> <引用>
   out="$(sy_json "$ctx" database search "$ref")" || return $?
   id="$(echo "$out" | "$SY_NODE" "$SY_LIB_DIR/fmt.js" find-by-field avName "$ref" avID)"
   if [[ -z "$id" ]]; then
-    sy_die 1 "$ctx: 找不到数据库 '$ref'" "运行 'siyuan av list' 查看全部数据库 (支持传 avID 或库名)"
+    sy_die 1 "$ctx: 找不到数据库 '$ref'" "运行 'siyuan db list' 查看全部数据库 (支持传 avID 或库名)"
   fi
   echo "$id"
 }
@@ -188,7 +188,7 @@ sy_av_apply() { # <ctx> <av> <itemID> <built_json>
     fi
   done
   if [[ $rc -ne 0 ]]; then
-    sy_die 1 "$ctx: 写入未生效 (CLI 返回 ok 但值未落库)" "运行 'siyuan av verify $av' 查看当前实际值"
+    sy_die 1 "$ctx: 写入未生效 (CLI 返回 ok 但值未落库)" "运行 'siyuan db verify $av' 查看当前实际值"
   fi
   echo "ok"
 }
@@ -252,7 +252,7 @@ cmd_av_keys() {
       ;;
     esac
   done
-  [[ -n "$av" ]] || sy_die 2 "av keys: 缺少 avID" "用法: siyuan db keys <avID|库名> [--json|--markdown] (用 'siyuan av list' 查 avID)"
+  [[ -n "$av" ]] || sy_die 2 "av keys: 缺少 avID" "用法: siyuan db keys <avID|库名> [--json|--markdown] (用 'siyuan db list' 查 avID)"
   av="$(sy_av_resolve "av keys" "$av")" || return $?
   local out
   out="$(sy_json "av keys" database keys --av "$av")" || return $?
@@ -356,7 +356,7 @@ cmd_av_get() {
     esac
   done
   [[ -n "$av" ]] || sy_die 2 "av get: 缺少 avID" "用法: siyuan db get <avID|库名> --row <rowID> [--json|--markdown]"
-  [[ -n "$row" ]] || sy_die 2 "av get: 缺少 --row" "用法: siyuan db get <avID|库名> --row <rowID> [--json|--markdown] (rowID 用 'siyuan av rows' 查看)"
+  [[ -n "$row" ]] || sy_die 2 "av get: 缺少 --row" "用法: siyuan db get <avID|库名> --row <rowID> [--json|--markdown] (rowID 用 'siyuan db rows' 查看)"
   av="$(sy_av_resolve "av get" "$av")" || return $?
   local rd
   rd="$(sy_av_render_all "av get" "$av")" || return $?
@@ -447,13 +447,13 @@ cmd_av_add() {
   rd="$(sy_av_render_all "av add" "$av")" || return $?
   if [[ -n "$block" ]]; then
     item="$(echo "$rd" | "$SY_NODE" "$SY_LIB_DIR/fmt.js" av-render find-item-by-doc "$block")"
-    [[ -n "$item" ]] || sy_die 1 "av add: 无法反查新行 itemID (文档绑定未生效)" "运行 'siyuan av rows $av' 查看当前行"
+    [[ -n "$item" ]] || sy_die 1 "av add: 无法反查新行 itemID (文档绑定未生效)" "运行 'siyuan db rows $av' 查看当前行"
   else
     item="$(echo "$rd" | "$SY_NODE" "$SY_LIB_DIR/fmt.js" av-render find-item "$content")"
     if [[ -z "$item" ]]; then
       item="$(echo "$rd" | "$SY_NODE" "$SY_LIB_DIR/fmt.js" av-render row-at "$before_rc")"
     fi
-    [[ -n "$item" ]] || sy_die 1 "av add: 无法反查新行 itemID" "运行 'siyuan av rows $av' 查看当前行"
+    [[ -n "$item" ]] || sy_die 1 "av add: 无法反查新行 itemID" "运行 'siyuan db rows $av' 查看当前行"
   fi
 
   sy_av_apply "av add" "$av" "$item" "$built" >/dev/null || return $?
@@ -520,7 +520,7 @@ cmd_av_update() {
   # 确认行存在
   rd="$(sy_av_render_all "av update" "$av")" || return $?
   has="$(echo "$rd" | "$SY_NODE" "$SY_LIB_DIR/fmt.js" av-render has-row "$row")"
-  [[ "$has" == ok ]] || sy_die 1 "av update: 找不到行 '$row'" "运行 'siyuan av rows $av' 查看行 id"
+  [[ "$has" == ok ]] || sy_die 1 "av update: 找不到行 '$row'" "运行 'siyuan db rows $av' 查看行 id"
 
   if [[ "$SY_MODE" == "text" ]]; then
     sy_av_apply "av update" "$av" "$row" "$built" || return $?
@@ -572,20 +572,20 @@ cmd_av_remove() {
     esac
   done
   [[ -n "$av" ]] || sy_die 2 "av remove: 缺少 avID" "用法: siyuan db remove <avID|库名> --row <rowID>"
-  [[ -n "$row" ]] || sy_die 2 "av remove: 缺少 --row" "用法: siyuan db remove <avID|库名> --row <rowID> (rowID 用 'siyuan av rows' 查看)"
+  [[ -n "$row" ]] || sy_die 2 "av remove: 缺少 --row" "用法: siyuan db remove <avID|库名> --row <rowID> (rowID 用 'siyuan db rows' 查看)"
   av="$(sy_av_resolve "av remove" "$av")" || return $?
 
   local rd has
   rd="$(sy_av_render_all "av remove" "$av")" || return $?
   has="$(echo "$rd" | "$SY_NODE" "$SY_LIB_DIR/fmt.js" av-render has-row "$row")"
-  [[ "$has" == ok ]] || sy_die 1 "av remove: 找不到行 '$row'" "运行 'siyuan av rows $av' 查看行 id"
+  [[ "$has" == ok ]] || sy_die 1 "av remove: 找不到行 '$row'" "运行 'siyuan db rows $av' 查看行 id"
 
   sy_kernel_or_die "av remove" database item remove --av "$av" --ids "$row" >/dev/null
 
   # 删后验证行已消失
   rd="$(sy_av_render_all "av remove" "$av")" || return $?
   has="$(echo "$rd" | "$SY_NODE" "$SY_LIB_DIR/fmt.js" av-render has-row "$row")"
-  [[ "$has" == none ]] || sy_die 1 "av remove: 删除未生效 (行 '$row' 仍在)" "重试, 或运行 'siyuan av verify $av' 查看实际行"
+  [[ "$has" == none ]] || sy_die 1 "av remove: 删除未生效 (行 '$row' 仍在)" "重试, 或运行 'siyuan db verify $av' 查看实际行"
   case "$SY_MODE" in
   json)
     printf '%s' "$row" | "$SY_NODE" "$SY_LIB_DIR/fmt.js" json-ok-row "$row" 删除
