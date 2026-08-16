@@ -93,7 +93,53 @@
 
 ## database — 数据库 (属性视图)
 
-底层 `raw database ...` (透传, 高级用): search / get (3.8 起仅结构元数据) / keys / render (行数据唯一来源) / item add|update|remove / key add|remove / unused / clean。
+> 封装: `siyuan av` 命令组 (推荐, 自动处理嵌套值/反查/验证, 见 commands.md)。以下为底层透传, 高级/一次性操作时用。
+
+| 命令 | 作用 |
+|------|------|
+| `raw database search "<关键词>"` | 按名称搜索数据库, 拿 avID |
+| `raw database get --av <avID>` | 获取数据库结构元数据 (**3.8.0 起不再含行数据**) |
+| `raw database keys --av <avID>` | 列出所有字段 (列) 及 keyID (**3.8.0 为 `{id,name,keys:[]}` 包装**) |
+| `raw database render --av <avID> [--query <kw>] [--view <id>] [-p 页] [-s 页大小]` | 渲染视图数据 (**行数据唯一来源**) |
+| `raw database item add --av <avID> --block <blockID> --content "标题"` | 新增一行 (绑定文档块) |
+| `raw database item add --av <avID> --detached --content "标题"` | 新增游离行 (不绑文档块) |
+| `raw database item update --av <avID> --key <keyID> --item <itemID> --value '<json>'` | 更新单元格 (**ok 不可信, 必须 render 验证**) |
+| `raw database item remove --av <avID> --ids <id1,id2>` | 删除行 |
+| `raw database key add --av <avID> --name <名> --type <类型>` | 新增字段 (列) |
+| `raw database key remove --av <avID> --key <keyID>` | 删除字段 |
+| `raw database unused` / `clean` | 列出 / 清理未使用的数据库 |
+
+字段类型: `block / text / number / date / select / mSelect / url / email / phone / mAsset / template / created / updated / checkbox / relation / rollup / lineNumber` (`block` 是首列主键, 建库时自带)。
+
+### ⚠️ 3.8.0 breaking (B1/B2, 必读)
+
+- **B1 — `database keys` 输出从数组 → 对象包装**: 新 (3.8) 返回 `{id, name, keys: [...]}`, 字段数组在 `keys` 里; 脚本需兼容判断 `Array.isArray(out) ? out : out.keys`。
+- **B2 — `database get` 不再返回行数据** (`keyValues` 字段消失): 行数据改由 `database render` 提供 — `view.rows[].id` = itemID (行ID), `view.rows[].cells[].value` = 单元格 (`blockID` 关联 keyID, `block.id` = 绑定文档块 ID, detached 行带 `isDetached:true`)。**所有行数据读取/写入验证必须走 render**。
+
+### ⚠️ 值结构对照表 (raw 手工传 `--value` 时最关键的坑)
+
+`item update` 返回 `ok` **不代表值真写进去了**, 必须 `render` 验证。value JSON **必须按字段类型嵌套** (源码 `kernel/av/value.go` 的 ValueXxx 结构体):
+
+| 类型 | 正确 `--value` JSON | 错误写法 (返回 ok 但不落库) |
+|------|---------------------|------|
+| text | `{"type":"text","text":{"content":"..."}}` | `{"type":"text","text":"..."}` |
+| url / email / phone | `{"type":"url","url":{"content":"..."}}` | `{"type":"url","content":"..."}` |
+| date | `{"type":"date","date":{"content":<Unix毫秒int>,"isNotEmpty":true}}` | `{"type":"date","content":"2026-07-08"}` |
+| select | `{"type":"select","mSelect":[{"content":"..."}]}` | `{"type":"select","content":"..."}` (**单选内部用 mSelect 数组!**) |
+| mSelect | `{"type":"mSelect","mSelect":[{"content":"A"},{"content":"B"}]}` | `{"type":"mSelect","contents":["A"]}` |
+| checkbox | `{"type":"checkbox","checkbox":{"checked":true}}` | `{"type":"checkbox","checked":true}` |
+| number | `{"type":"number","number":{"content":123,"isNotEmpty":true}}` | `{"type":"number","content":123}` |
+| relation | `{"type":"relation","relation":{"blockIDs":["<目标行blockID>"]}}` | contents 是自动渲染的, 不需传 |
+| mAsset | `{"type":"mAsset","mAsset":[{"type":"file","name":"名","content":"<url>"}]}` | type 为 file 或 image |
+
+**静默 ok 根因**: `--value` JSON 反序列化到 `*av.Value` (字段全是嵌套对象), 顶层 `content`/`checked` 被丢弃 → 子对象 nil → 静默跳过, CLI 照常打印 ok。
+日期时间戳生成: `python3 -c "import calendar;print(int(calendar.timegm((2026,7,8,0,0,0,0,0,0)))*1000)"`
+
+### itemID 与 blockID 的区别
+
+- **blockID**: 绑定文档块的 ID (item add 的 `--block` 值), 是首列主键指向的文档
+- **itemID**: 数据库行的 ID, **每次 add 新生成** (≠ blockID); **item add 不返回 itemID**, 必须 render 反查 (`view.rows[].id`)
+- **value 含双引号**: 用临时文件传递 (`--value "$(cat /tmp/v.txt)"`) 或直接用 av 命令组 (`--values @file`), shell 单引号嵌套会静默截断
 
 ## attr / bookmark / tag — 属性、书签、标签
 

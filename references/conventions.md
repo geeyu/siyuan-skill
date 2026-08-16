@@ -87,8 +87,8 @@ parent=$(siyuan sql "SELECT parent_id FROM blocks WHERE id='$prev'" | head -1)
 
 `database item update` 对错误 value 结构**静默返回 ok** 但不落库 (CLI bug)。
 根因: `--value` 的 JSON 被反序列化到 `av.Value` 结构体, 其字段是嵌套对象 (`text/url/date/mSelect/checkbox/...`), 用顶层 `content`/`checked` 会被丢弃。
-**必须用 `database render` 验证行数据是否有值** (3.8.0 起 `database get` 无行数据, 见 database.md B2)。
-详见 [database.md](database.md) 的「值结构对照表」。
+**必须用 `database render` 验证行数据是否有值** (3.8.0 起 `database get` 无行数据, 见 raw-commands.md B2)。
+详见 [commands.md](commands.md) 的「值结构对照表」。
 
 ## 11. 数据库 item add 不返回 itemID
 

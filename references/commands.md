@@ -1,7 +1,7 @@
 # siyuan 封装命令完整参考
 
 > 这是 skill 的**主学习材料**: 全部封装命令的用途、参数、输出、示例与组合用法。
-> 封装层满足不了时, 底层原始命令见 [raw.md](raw.md); 复杂功能 (数据库) 见 [database.md](database.md)。
+> 封装层满足不了时, 底层原始命令见 [raw-commands.md](raw-commands.md); 踩坑规范见 [conventions.md](conventions.md)。
 
 ## 通用约定 (所有命令)
 
@@ -237,29 +237,78 @@ siyuan rename <doc> <新标题>
 
 ## 四、数据库 (AV) — `av` 命令组
 
-见 [database.md](database.md) 完整规范。速查:
+思源的「数据库」官方叫**属性视图 (Attribute View, AV)**, 是嵌在文档里的表格型结构化数据, 用于排查记录/问题清单/台账等多维筛选场景。
 
-```
-siyuan av list                          # 列出全部数据库 (名称+avID)
-siyuan av keys <avID|库名>              # 列字段 (name/type/keyID)
-siyuan av rows <avID> [--limit N] [-H]  # 列行数据 (TSV 可管道)
-siyuan av get <avID> --row <行ID>       # 单行详情
-siyuan av add <avID> --values '<JSON>' [--content 标题] [--block <doc>]   # 加行
-siyuan av update <avID> --row <行ID> --values '<JSON>'                    # 改行
-siyuan av remove <avID> --row <行ID>    # 删行
-siyuan av verify <avID>                 # 逐行打印实际值 (验证权威入口)
-siyuan av export <avID>                 # 导出全量 JSON (备份)
+### 前提
+
+1. **数据库必须先在思源 App 里创建** (插入块 → 数据库视图)。CLI 只能操作已存在的数据库。
+2. **拿到 avID**: 数据库是嵌在文档里的块, avID 是该块的 ID (≠ 文档 ID):
+   ```bash
+   siyuan av list                          # 列出全部数据库 (avID+名称+路径)
+   siyuan raw database search "排查记录"    # 或按名称搜
+   ```
+   `<avID|库名>` 参数支持传 avID 或库名 (模糊搜首个匹配)。
+
+### 命令
+
+| 命令 | 作用 |
+|------|------|
+| `av list [--json\|--markdown]` | 列出全部数据库 |
+| `av keys <avID> [--json\|--markdown]` | 列字段 (name/type/keyID) |
+| `av rows <avID> [--limit N] [-H] [--json\|--markdown]` | 列行数据 (文本=TSV 可管道) |
+| `av get <avID> --row <行ID> [--json\|--markdown]` | 单行详情 |
+| `av add <avID> --values '<JSON>' [--content 标题] [--block <doc>]` | 加行 (自动反查 itemID, 写后验证) |
+| `av update <avID> --row <行ID> --values '<JSON>'` | 改行 (写后验证, 失败退出 1) |
+| `av remove <avID> --row <行ID>` | 删行 (删后验证) |
+| `av verify <avID> [--json\|--markdown]` | 逐行打印实际值 (**验证权威入口**) |
+| `av export <avID>` | 导出全量 JSON (备份/迁移) |
+
+### 值规则 (`--values`)
+
+`--values` 传 `{字段名: 值}` JSON, **值传简单形式即可, 自动按字段类型嵌套**:
+
+| 字段类型 | 传值示例 | 自动构造 |
+|------|------|------|
+| text / url / email / phone / template | `"排查结论":"内容"` | `{text:{content}}` 等 |
+| date | `"报告日期":"2026-07-08"` 或 `"2026-07-08T00:00:00Z"` 或毫秒数字 | `{date:{content:<毫秒>,isNotEmpty:true}}` |
+| select (单选) | `"问题状态":"已解决"` | `{select,mSelect:[{content}]}` |
+| mSelect (多选) | `"标签":["快速","耗时"]` 或 `"标签":"快速,耗时"` | `{mSelect,mSelect:[{content},...]}` |
+| checkbox | `"是否修复":true` (或 `"true"`/`"1"`) | `{checkbox:{checked}}` |
+| number | `"评分":95` | `{number:{content:95,isNotEmpty:true}}` |
+| relation | `"关联":["<blockID>"]` 或逗号分隔串 | `{relation:{blockIDs:[...]}}` |
+| mAsset | `"附件":["名1","名2"]` | `{mAsset:[{type:file,name,content:''}]}` |
+| 完整 value 对象 | `{"字段":{"type":"text","text":{"content":"x"}}}` | 原样透传 |
+
+- 未知字段名 / 只读类型 (rollup/created/updated/lineNumber) 报错退出 1; block 主键列由 `--content`/`--block` 设置
+- **含引号的值**: 用 `--values @文件` 或管道 stdin (shell 引号嵌套会静默失败, 见 conventions.md §13)
+- **select 首次写入会自动创建选项** (随机配色), 重要选项建议先在 App 里建好
+
+### 录入一条记录的标准流程
+
+```bash
+AV=20260709112905-e1gm9bd  # 排查记录库 (或 av list 动态查)
+siyuan av keys "$AV"                                       # 1. 查字段名
+DOC=$(cat report.md | siyuan write --notebook 工作 --title "排查：XXX" --parent "<目录>")  # 2. 写排查文档
+ITEM=$(siyuan av add "$AV" --block "$DOC" --content "排查：XXX" \\
+  --values '{"报告日期":"2026-07-08","业务模块":"调课调讲","问题状态":"已解决"}')   # 3. 加行 (输出 itemID)
+cat > /tmp/v.json <<'EOF'                                  # 4. 改值 (含引号走文件)
+{"排查结论":"含\"引号\"的结论","标签":["快速"],"责任人":"张三"}
+EOF
+siyuan av update "$AV" --row "$ITEM" --values @/tmp/v.json
+siyuan av verify "$AV"                                     # 5. ⚠ 验证 (ok 不代表成功)
 ```
 
-- `--values` 传 `{字段名: 值}` 自动按类型嵌套; 写后自动验证 (底层 item update 的 ok 不可信)
-- avID 支持按库名解析; `--block` 引用支持 id/标题/路径
+### 排查记录库字段设计 (当前规范)
+
+库 avID `20260709112905-e1gm9bd`, 位于 `/工作/供应链/问题排查记录/排查记录库`。字段: 主键(block) / 报告日期(date) / 业务模块(select) / 问题类型(select) / 严重程度(select: P0-P3) / 根因类型(select) / 问题状态(select) / 影响范围(select) / 涉及接口(url) / 涉及数据(text) / 排查结论(text) / 责任人(text) / 标签(mSelect)。
+设计要点: 「是否系统bug」归入根因类型; 「是否已修复」归入问题状态; 排查结论用 text 不用 template (template 是公式字段)。
 
 ---
 
 ## 五、底层透传与帮助
 
 ```
-siyuan raw <args...>           # 透传 SiYuan-Kernel (自带 -w; 完整 24 类命令见 raw.md)
+siyuan raw <args...>           # 透传 SiYuan-Kernel (自带 -w; 完整 24 类命令见 raw-commands.md)
 siyuan raw-help <sub...>       # 查底层命令帮助, 例: raw-help block insert
 siyuan help [命令]             # 帮助; 旧名别名: list/read/get/outline/search/notebooks 仍可用
 ```

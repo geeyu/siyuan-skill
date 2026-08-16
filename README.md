@@ -17,11 +17,9 @@ echo 'alias siyuan=~/.pi/skills/siyuan/bin/siyuan' >> ~/.zshrc
 ```
 SKILL.md (入口)                 引用协议 + 命令速查 + 高频坑 → 立刻能干活
   ↓ 需要命令细节
-references/commands.md          ★ 封装命令完整参考 (参数/输出/示例/组合)
+references/commands.md          ★ 封装命令完整参考 (参数/输出/示例/组合, 含数据库 av 命令组)
   ↓ 封装不满足
-references/raw.md               底层原始命令 (24 类, 或 raw-help 实时查)
-  ↓ 复杂功能
-references/database.md          数据库 (AV) 深度规范
+references/raw-commands.md      底层原始命令 (24 类, 或 raw-help 实时查)
   ↓ 踩坑沉淀
 references/conventions.md       批量整理等事故规范
 ```
@@ -78,7 +76,7 @@ siyuan mv <doc> --parent <父文档>        # 移动 (同/跨笔记本, 别名 -
 siyuan cp <doc> --parent <父文档>        # 复制
 siyuan diff <docA> <docB>               # 对比两文档 (统一 diff)
 siyuan rm <doc>                         # 删除
-siyuan av list                          # 数据库列表 (见 references/database.md)
+siyuan av list                          # 数据库列表 (见 references/commands.md)
 siyuan raw database search "库名"       # 底层透传
 ```
 

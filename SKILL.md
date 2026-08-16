@@ -13,9 +13,8 @@ description: >
 | 层 | 文档 | 什么时候读 |
 | ---- | ------ | ----------- |
 | 入口 | **本文 (SKILL.md)** | 立刻开始干活: 引用协议 + 速查 + 约定 |
-| 详情 | [references/commands.md](references/commands.md) | 封装命令的完整参数/输出/示例/组合 |
-| 深篇 | [references/database.md](references/database.md) | 数据库 (AV) 录入/字段/验证 |
-| 底层 | [references/raw.md](references/raw.md) | 封装满足不了时, 原始内核命令 (或 `siyuan raw-help <cmd>` 实时查) |
+| 详情 | [references/commands.md](references/commands.md) | 封装命令的完整参数/输出/示例/组合 (含数据库 av 命令组) |
+| 底层 | [references/raw-commands.md](references/raw-commands.md) | 封装满足不了时, 原始内核命令 (或 `siyuan raw-help <cmd>` 实时查) |
 | 踩坑 | [references/conventions.md](references/conventions.md) | 批量整理等事故规范 |
 
 ## 何时使用
@@ -84,7 +83,7 @@ shell 风格命令集 (像操作 Linux 一样操作思源): 默认人类可读�
 
 内容传入统一支持 `--data <字符串>` / `--file <文件>` / 管道 stdin; 引用统一支持 id/标题/路径。
 
-### 数据库 (AV) — 深篇见 database.md
+### 数据库 (AV) — 完整参考见 commands.md「四、数据库」
 
 ```bash
 siyuan av list                          # 全部数据库
@@ -98,7 +97,7 @@ siyuan av export <avID>                 # 备份
 ### 底层透传 (封装满足不了时)
 
 ```
-siyuan raw <args...>       # 透传 SiYuan-Kernel (24 类命令见 raw.md)
+siyuan raw <args...>       # 透传 SiYuan-Kernel (24 类命令见 raw-commands.md)
 siyuan raw-help <sub...>   # 查底层帮助, 例: raw-help block insert
 ```
 
