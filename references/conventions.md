@@ -13,6 +13,7 @@
 
 思源 `createDocWithMd` 按 hpath 创建会重复建同名中间块 (API 固有问题)。
 封装层 `touch`/`write` 已用「createDocWithMd + moveDocs + 删中间块」三步自动处理:
+
 1. `createDocWithMd` 按完整 hpath 创建 (会产生中间块)
 2. `moveDocs` 把新文档移到目标父块下
 3. 删除产生的空中间块 (`removeDocByID`)
@@ -23,6 +24,7 @@
 ## 3. markdown 内容传入方式
 
 `write`/`append`/`insert-block`/`update-block`/`replace-doc` 统一支持三种:
+
 - `--data <字符串>`
 - `--file <文件路径>`
 - 管道 stdin (`echo '...' | siyuan write ...`)
@@ -32,6 +34,7 @@
 ## 4. 判断写入成功看 cat, 不看 SQL
 
 思源 block update/delete 后, SQL 查 `content` 字段可能滞后 (事务队列 `FlushTxQueue` 异步索引)。
+
 - SQL (`siyuan sql`) 查的是数据库, content 由事务队列异步更新, 秒级滞后
 - `siyuan cat <doc>` 走 `export md` 直接读文件树, 是准的
 
@@ -45,6 +48,7 @@
 
 默认建文档时 IAL title 与首个 H1 一致, 所以像「跟随 H1」, 但 rename 后两者会不一致。
 要 H1 也同步改名, 需额外:
+
 ```bash
 # 先定位 H1 块 id (sql 文本输出为 TSV 行, 单列查询取首行即可)
 H1=$(siyuan sql "SELECT id FROM blocks WHERE root_id='$DOC' AND type='h' AND subtype='h1' LIMIT 1" | head -1)
@@ -55,6 +59,7 @@ siyuan update-block "$H1" --data "# 新标题"
 
 底层 `document move` 只能跨笔记本 (`--notebook` 必填), 同笔记本改父级会失败。
 封装层 `siyuan move <doc> --parent <父文档>` (同 `mv`, 引用支持 id/标题/路径) 自动处理:
+
 - 解析目标父文档 → 取其所在笔记本为 toNotebook、.sy 路径为 toPath
 - CLI `document move --id <doc> --notebook <toNotebook> --path <toPath>` (不依赖 HTTP serve)
 
@@ -71,9 +76,11 @@ siyuan update-block "$H1" --data "# 新标题"
 
 底层 `block insert` 要求 `--parent` 必填, `--previous` 只是兄弟锚点 (插入在该块之后)。
 封装 `siyuan insert-block --previous <id>` 会自动查其 parent:
+
 ```bash
 parent=$(siyuan sql "SELECT parent_id FROM blocks WHERE id='$prev'" | head -1)
 ```
+
 找不到 parent 时报错提示显式传 `--parent`。
 源码: 封装层 `cmd_insert_block`; 思源侧 `blockInsertCmd`。
 
@@ -141,3 +148,41 @@ CLI 和 MCP 行为一致。
 4. rename 在移动前做 (rename 不改变父级, 移动后路径变化会引入歧义)
 5. 删空目录放最后 (见 14.1)
 6. 收尾: 通配 `ls` 总数 = 文档数 + 目录数, 与盘点对账; 抽查 2-3 篇 `cat` 确认内容无损
+
+## 15. 命令替换吞错误 (⚠ 系统级坑, 曾导致整篇文档被清空)
+
+### 事故复盘 (8/16)
+
+`printf '' | siyuan edit <doc> --replace` 期望"报错且不修改文档", 实际**报错后继续执行**: 输出成功 id、rc=0、整篇文档被清空, 甚至造成 blocks 表重复索引行。
+
+### 根因 (两层叠加)
+
+1. **set -e 在条件上下文失效**: `main` 里 `sy_dispatch "$cmd" "$@" || rc=$?` — sy_dispatch 处于 `||` 条件上下文, bash 的 `set -e` 在**整个函数体内失效** (包括其调用的所有子函数)。
+2. **sy_die 在命令替换子 shell 中 exit**: `data="$(sy_edit_data ...)"` — sy_edit_data 内 `sy_die` 的 `exit 2` **只退出命令替换的子 shell**, 主 shell 拿到空输出 + 非零码; 若调用处无 `|| return $?` 且 set -e 失效 → **带着空值继续执行写操作**。
+
+### 规范
+
+- **所有命令替换调用必须带 `|| return $?`**: `data="$(sy_edit_data ...)" || return $?` — 这是硬约束, 新增代码必须遵守。
+- 已修复: cmd-edit `sy_edit_data` 调用、cmd-query `sy_locate_docs` 调用; 其余 `sy_json`/`sy_resolve_*` 调用点已全部带防护 (grep 校验: `='\$(sy_` 且无 `|| return` 为零)。
+- **验证方法**: 空 stdin 管道到写命令必须报错 rc≠0 且文档不被修改。
+
+  ```bash
+  printf '' | siyuan edit <doc> --replace; echo $?   # 必须 rc=2 且文档原样
+  ```
+
+## 16. 空内容操作的语义
+
+| 操作 | 行为 |
+| ------ | ------ |
+| `touch --data ""` (显式空) | ✅ 创建空文档 (空文件语义, `--data ""` 合法) |
+| `edit --replace` + 空 stdin/空 data | ❌ 报错 "没有提供内容" rc=2, **文档不被修改** |
+| `append --data ""` | ❌ 报错 "没有提供内容" rc=2 |
+| `--data` 缺值 (无参数) | ❌ 报 "缺少值" rc=2 (与空值区分) |
+
+## 17. 文档操作事故的修复原则 (真实教训)
+
+**先备份内容, 再动文档; 出问题就"新起文件删旧", 不要修数据库。**
+
+- 脚本提取文档内容做转移时, 先 `cat` 输出确认非空, 再执行写入 (本次 CONTENT 提取为空 → 后续连锁事故)
+- 文档/索引异常 (如 blocks 重复行) → **删除文档重建** 即可, 思源会清理索引; **不要**直接改 SQLite (内核 sql 只读, 直接改 db 有 App 运行冲突风险, 且绕远)
+- 重建流程: rename 旧文档腾位 → touch 新建 → mv 子文档 → rm 旧文档 (级联清理索引)

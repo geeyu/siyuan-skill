@@ -50,7 +50,8 @@ cmd_touch() {
       shift 2
       ;;
     --data | -d)
-      data="${2:?}"
+      [[ $# -ge 2 ]] || sy_die 2 "$SY_CMD_NAME: --data 缺少值" "用 --data <内容> / --file <文件> / 管道 stdin; 空内容建空文档"
+      data="$2"
       shift 2
       ;;
     --file | -f)
@@ -152,8 +153,11 @@ cmd_edit() {
 
   local doc
   doc="$(sy_resolve_doc edit "$doc_ref")" || return $?
+  # ⚠ 必须检查退出码: sy_edit_data 内部 sy_die 在命令替换子 shell 中 exit,
+  #   主 shell 的 set -e 因 sy_dispatch 处于 || 条件上下文而失效, 不检查会
+  #   拿着空 data 继续执行写操作 (真实事故: --replace 清空整篇文档)
   local data
-  data="$(sy_edit_data edit "$mode_arg" "$file")"
+  data="$(sy_edit_data edit "$mode_arg" "$file")" || return $?
 
   case "$mode" in
   append)

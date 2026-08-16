@@ -74,7 +74,7 @@ cmd_ls() {
     local target="$ref"
     [[ -n "$pth" ]] && target="${ref%/}${pth}"
     local out
-    out="$(sy_locate_docs ls "$target")"
+    out="$(sy_locate_docs ls "$target")" || return $?
     local n
     n="$(echo "$out" | "$SY_NODE" "$SY_LIB_DIR/fmt.js" len)"
     if [[ "$n" -eq 0 ]]; then

@@ -158,7 +158,8 @@ cmd_write() {
       shift 2
       ;;
     --data | -d)
-      data="${2:?}"
+      [[ $# -ge 2 ]] || sy_die 2 "$SY_CMD_NAME: --data 缺少值" "用 --data <内容> / --file <文件> / 管道 stdin"
+      data="$2"
       shift 2
       ;;
     --file | -f)
@@ -221,7 +222,8 @@ cmd_append() {
   while [[ $# -gt 0 ]]; do
     case "$1" in
     --data | -d)
-      data="${2:?}"
+      [[ $# -ge 2 ]] || sy_die 2 "$SY_CMD_NAME: --data 缺少值" "用 --data <内容> / --file <文件> / 管道 stdin"
+      data="$2"
       shift 2
       ;;
     --file | -f)
@@ -274,7 +276,8 @@ cmd_update_block() {
   while [[ $# -gt 0 ]]; do
     case "$1" in
     --data | -d)
-      data="${2:?}"
+      [[ $# -ge 2 ]] || sy_die 2 "$SY_CMD_NAME: --data 缺少值" "用 --data <内容> / --file <文件> / 管道 stdin"
+      data="$2"
       shift 2
       ;;
     --file | -f)
@@ -366,7 +369,8 @@ cmd_insert_block() {
       shift 2
       ;;
     --data | -d)
-      data="${2:?}"
+      [[ $# -ge 2 ]] || sy_die 2 "$SY_CMD_NAME: --data 缺少值" "用 --data <内容> / --file <文件> / 管道 stdin"
+      data="$2"
       shift 2
       ;;
     --file | -f)
@@ -457,7 +461,8 @@ cmd_replace_doc() {
   while [[ $# -gt 0 ]]; do
     case "$1" in
     --data | -d)
-      data="${2:?}"
+      [[ $# -ge 2 ]] || sy_die 2 "$SY_CMD_NAME: --data 缺少值" "用 --data <内容> / --file <文件> / 管道 stdin"
+      data="$2"
       shift 2
       ;;
     --file | -f)
