@@ -26,92 +26,94 @@ cmd_ls() {
       sy_usage ls
       return 0
       ;;
-    -*) sy_die 2 "ls: 未知参数 '$1'" "用法: siyuan ls [笔记本] [路径] [-l] [--json|--markdown]" ;;
+    -*) sy_die 2 "ls: 未知参数 '$1'" "用法: siyuan ls [引用] [-l] [--json|--markdown]" ;;
     *)
       args+=("$1")
       shift
       ;;
     esac
   done
-  local nb="${args[0]:-}" pth="${args[1]:-}"
-  # 单参完整路径 (ls /工作/调课 或 ls /工作): 自动拆笔记本 + 路径
-  if [[ -z "${args[1]:-}" && "$nb" == /* ]]; then
-    local work first rest nbsoft
-    work="${nb#/}"
-    first="${work%%/*}"
-    rest="${work#*/}"
-    [[ "$work" != */* ]] && rest=""
-    nbsoft="$(sy_resolve_notebook_soft ls "$first")" || return $?
-    if [[ -n "$nbsoft" ]]; then
-      nb="$nbsoft"
-      [[ -n "$rest" ]] && pth="/$rest"
-    elif [[ -z "$pth" ]]; then
-      sy_die 1 "ls: 无法从 '$nb' 解析笔记本名" "用法: siyuan ls <笔记本> [路径], 或完整路径 'siyuan ls /笔记本/路径' (如 /工作/调课)"
+  local ref="${args[0]:-}" pth="${args[1]:-}"
+
+  # 无参: 列笔记本 (SIYUAN_DEFAULT_NOTEBOOK 已设时列该库根)
+  if [[ -z "$ref" ]]; then
+    if [[ -n "$SIYUAN_DEFAULT_NOTEBOOK" ]]; then
+      ref="$SIYUAN_DEFAULT_NOTEBOOK"
+    else
+      local out
+      out="$(sy_json ls notebook list)" || return $?
+      case "$SY_MODE" in
+      json)
+        echo "$out" | "$SY_NODE" "$SY_LIB_DIR/fmt.js" pick id name icon closed sort
+        ;;
+      markdown)
+        local mtargs=(名称:name ID:id)
+        [[ $long -eq 1 ]] && mtargs+=(关闭:closed)
+        echo "$out" | "$SY_NODE" "$SY_LIB_DIR/fmt.js" md-table "${mtargs[@]}"
+        ;;
+      *)
+        if [[ $long -eq 1 ]]; then
+          echo "$out" | sy_tsv id name closed
+        else
+          echo "$out" | sy_tsv id name
+        fi
+        ;;
+      esac
+      return 0
     fi
   fi
-  # 设了默认笔记本时, 无参 ls 列该库文档; 首个参数为 /路径 视为路径
-  if [[ -n "$SIYUAN_DEFAULT_NOTEBOOK" && -z "$nb" ]]; then
-    nb="$SIYUAN_DEFAULT_NOTEBOOK"
-  elif [[ -n "$SIYUAN_DEFAULT_NOTEBOOK" && -z "${args[1]:-}" && "$nb" == /* ]]; then
-    pth="$nb"
-    nb="$SIYUAN_DEFAULT_NOTEBOOK"
-  fi
 
-  if [[ -z "$nb" ]]; then
-    # --- 列笔记本 ---
+  local nbid="" doc_id="" pure_hpath=""
+  local nbsoft
+  # 引用解析: 先试笔记本 (名/id); 单参是笔记本 → 列库根
+  nbsoft="$(sy_resolve_notebook_soft ls "$ref")" || return $?
+  if [[ -n "$nbsoft" && -z "$pth" ]]; then
+    nbid="$nbsoft"
+  else
+    # 文档引用定位 (单参: id/标题/任意路径; 双参兼容: 笔记本 + 路径, 拼合定位)
+    local target="$ref"
+    [[ -n "$pth" ]] && target="${ref%/}${pth}"
     local out
-    out="$(sy_json ls notebook list)" || return $?
-    case "$SY_MODE" in
-    json)
-      echo "$out" | "$SY_NODE" "$SY_LIB_DIR/fmt.js" pick id name icon closed sort
-      ;;
-    markdown)
-      local mtargs=(名称:name ID:id)
-      [[ $long -eq 1 ]] && mtargs+=(关闭:closed)
-      echo "$out" | "$SY_NODE" "$SY_LIB_DIR/fmt.js" md-table "${mtargs[@]}"
-      ;;
-    *)
-      if [[ $long -eq 1 ]]; then
-        echo "$out" | sy_tsv id name closed
-      else
-        echo "$out" | sy_tsv id name
-      fi
-      ;;
-    esac
-    return 0
+    out="$(sy_locate_docs ls "$target")"
+    local n
+    n="$(echo "$out" | "$SY_NODE" "$SY_LIB_DIR/fmt.js" len)"
+    if [[ "$n" -eq 0 ]]; then
+      sy_die 1 "ls: 找不到 '$target'" "用 'siyuan find $target' 搜相近文档, 或 'siyuan ls' 看笔记本结构"
+    fi
+    if [[ "$n" -gt 1 ]]; then
+      local names
+      names="$(sy_nb_names ls)" || return $?
+      echo "$out" | NB_NAMES="$names" "$SY_NODE" "$SY_LIB_DIR/fmt.js" candidates >&2
+      sy_die 1 "ls: '$target' 有 $n 个匹配" "用完整路径消歧, 如 'siyuan ls /工作/完整/路径'"
+    fi
+    doc_id="$(echo "$out" | "$SY_NODE" "$SY_LIB_DIR/fmt.js" ids)"
+    nbid="$(echo "$out" | "$SY_NODE" "$SY_LIB_DIR/fmt.js" tsv box)"
+    # 纯 hpath (document list --hpath 需要, 不含笔记本名)
+    pure_hpath="$(sy_json ls sql "SELECT hpath FROM blocks WHERE id='$doc_id'" |
+      "$SY_NODE" "$SY_LIB_DIR/fmt.js" first-field hpath)" || return $?
   fi
 
-  # --- 列笔记本下文档 ---
-  local nbid
-  nbid="$(sy_resolve_notebook ls "$nb")" || return $?
+  # --- 列文档 ---
   local out dargs=(document list --notebook "$nbid")
-  if [[ -n "$pth" ]]; then
-    # internal path 形如 /20241206xxxx-abc.sy...; 其余按人类可读 hpath
-    if [[ "$pth" =~ ^/[0-9]{14}-[a-z0-9]{6,8}(/|$) ]]; then
-      dargs+=(--path "$pth")
-    elif [[ "$pth" == /* ]]; then
-      # hpath: 先 SQL 定位, 避免内核两处误导行为 (不存在/叶子文档会静默列根或报错)
-      local esc="${pth//\'/\'\'}"
-      local cnt
-      cnt="$(sy_json ls sql "SELECT count(*) AS cnt FROM blocks WHERE hpath='$esc' AND type='d'" |
-        "$SY_NODE" "$SY_LIB_DIR/fmt.js" first-field cnt)" || return $?
-      if [[ -z "$cnt" || "$cnt" == "0" ]]; then
-        sy_die 1 "ls: 找不到路径 '$pth'" "用 'siyuan find' 搜相近文档, 或确认路径以 / 开头且完整 (如 /工作/调课)"
-      fi
+  if [[ -n "$doc_id" ]]; then
+    # internal path (底层细节, 兼容): /2024xxx.sy...
+    if [[ "${args[0]:-}" =~ ^/[0-9]{14}-[a-z0-9]{6,8}(/|$) ]] || [[ "${args[1]:-}" =~ ^/[0-9]{14}-[a-z0-9]{6,8}(/|$) ]]; then
+      dargs+=(--path "${args[1]:-${args[0]}}")
+    else
+      # 子文档数: 0 则空列表 (目录/叶子文档统一空输出)
+      local esc
+      esc="${pure_hpath//\'/\'\'}"
       local sub
       sub="$(sy_json ls sql "SELECT count(*) AS cnt FROM blocks WHERE hpath LIKE '${esc}/%' AND type='d'" |
         "$SY_NODE" "$SY_LIB_DIR/fmt.js" first-field cnt)" || return $?
       if [[ "$sub" == "0" ]]; then
-        # 叶子文档: 无子文档, 空列表
         case "$SY_MODE" in
         json) echo '[]' ;;
-        *) : ;; # 文本/markdown 无输出
+        *) : ;;
         esac
         return 0
       fi
-      dargs+=(--hpath "$pth")
-    else
-      sy_die 2 "ls: 路径参数需以 / 开头 ('$pth')" "路径是完整人类可读路径, 如 'siyuan ls 工作 /工作/调课'; 不带 / 会被误当作笔记本名"
+      dargs+=(--hpath "$pure_hpath")
     fi
   fi
   out="$(sy_json ls "${dargs[@]}")" || return $?
@@ -138,10 +140,6 @@ cmd_ls() {
   esac
 }
 
-# ---------------------------------------------------------------------------
-# tree <doc> [-l] [--json]
-#   标题树/大纲 (对应 outline get); 文本按标题层级缩进, -l 附块 id
-# ---------------------------------------------------------------------------
 cmd_tree() {
   local long=0
   local args=()
@@ -166,9 +164,20 @@ cmd_tree() {
       ;;
     esac
   done
-  [[ -n "${args[0]:-}" ]] || sy_die 2 "tree: 缺少文档参数" "用法: siyuan tree <doc-id|标题|/路径> [-l] [--json|--markdown]"
+  [[ -n "${args[0]:-}" ]] || sy_die 2 "tree: 缺少文档参数" "用法: siyuan tree <doc> [-l] [--json|--markdown]"
   local doc
   doc="$(sy_resolve_doc tree "${args[0]}")" || return $?
+  # 无标题文档 (目录文档/空文档) 是合法场景: 输出空而非内核报错
+  local hcnt
+  hcnt="$(sy_json tree sql "SELECT count(*) AS cnt FROM blocks WHERE root_id='$doc' AND type='h'" |
+    "$SY_NODE" "$SY_LIB_DIR/fmt.js" first-field cnt)" || return $?
+  if [[ -z "$hcnt" || "$hcnt" == "0" ]]; then
+    case "$SY_MODE" in
+    json) echo '[]' ;;
+    *) : ;;
+    esac
+    return 0
+  fi
   local out
   out="$(sy_json tree outline get --id "$doc")" || return $?
   case "$SY_MODE" in
@@ -350,7 +359,9 @@ cmd_find() {
     echo "$rows" | NB_NAMES="$names" "$SY_NODE" "$SY_LIB_DIR/fmt.js" md-docs
     ;;
   *)
-    echo "$rows" | "$SY_NODE" "$SY_LIB_DIR/fmt.js" tsv id hPath box
+    local names
+    names="$(sy_nb_names find)" || return $?
+    echo "$rows" | NB_NAMES="$names" "$SY_NODE" "$SY_LIB_DIR/fmt.js" tsv id hPath box
     ;;
   esac
 }
@@ -515,7 +526,9 @@ cmd_which() {
     ;;
   *)
     if [[ $verbose -eq 1 ]]; then
-      echo "$out" | "$SY_NODE" "$SY_LIB_DIR/fmt.js" tsv id hPath box
+      local names
+      names="$(sy_nb_names which)" || return $?
+      echo "$out" | NB_NAMES="$names" "$SY_NODE" "$SY_LIB_DIR/fmt.js" tsv id hPath box
     else
       echo "$out" | "$SY_NODE" "$SY_LIB_DIR/fmt.js" ids
     fi

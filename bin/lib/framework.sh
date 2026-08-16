@@ -263,16 +263,14 @@ sy_tsv() {
 # ---------------------------------------------------------------------------
 
 # 解析笔记本引用 (id 或名字) -> stdout: notebook id; 找不到输出空 (不报错)
+#   注意: id 形态 (14位时间戳-字母数字) 不直接放行 — doc id 同形态, 必须查 notebook list 验证
 sy_resolve_notebook_soft() { # <ctx> <id或名字>
   local ctx="$1" nb="$2"
   [[ -n "$nb" ]] || return 0
-  if [[ "$nb" =~ ^[0-9]{14}-[a-z0-9]{6,8}$ ]]; then
-    echo "$nb"
-    return 0
-  fi
   local out id
   out="$(sy_json "$ctx" notebook list)" || return $?
-  id="$(echo "$out" | "$SY_NODE" "$SY_LIB_DIR/fmt.js" find-by-field name "$nb" id)"
+  id="$(echo "$out" | "$SY_NODE" "$SY_LIB_DIR/fmt.js" find-by-field id "$nb" id)"
+  [[ -n "$id" ]] || id="$(echo "$out" | "$SY_NODE" "$SY_LIB_DIR/fmt.js" find-by-field name "$nb" id)"
   [[ -n "$id" ]] && echo "$id"
   return 0
 }
@@ -292,46 +290,114 @@ sy_resolve_notebook() { # <ctx> <id或名字>
 #   规则: id 精确查; 含 / 的引用先按 hpath 精确匹配, 无匹配则尝试
 #         「笔记本名 + hPath」(如 /工作/调课, 或 find 输出直接复制的 工作/调课);
 #         仍无匹配回退标题搜索 (document search, 精确同名优先, 再宽松匹配)
+# 路径后缀匹配 (部分路径 /AI伴学 → hpath 后缀), LIKE 特殊字符转义
+sy_locate_suffix() { # <ctx> <去前导/的路径段> [box 限定] -> stdout: JSON 数组 (可为空)
+  local ctx="$1" seg="$2" box="${3:-}"
+  local esc="${seg//\'/\'\'}"
+  esc="${esc//%/\\%}"
+  esc="${esc//_/\\_}"
+  local sql="SELECT id, hpath, box FROM blocks WHERE hpath LIKE '%/$esc' AND type='d'"
+  [[ -n "$box" ]] && sql+=" AND box='$box'"
+  sy_json "$ctx" sql "$sql"
+}
+
+# 定位文档引用 (id / 标题 / 路径) -> stdout: JSON 数组 [{id,hPath,box}]
+#   统一解析链 (多匹配一律交给上层列候选):
+#     1. id 精确
+#     2. 完整路径 / 笔记本名+路径 (带不带前导 / 均可)
+#     3. hpath 精确 (无笔记本名)
+#     4. 路径后缀匹配 (部分路径, 如 /AI伴学)
+#     5. 标题搜索 (精确同名优先; 无 / 引用先标题, 空则补后缀匹配目录名)
+# 文档引用统一解析链 (多匹配一律交给上层列候选):
+#   / 开头 (路径语义):
+#     a. 完整路径精确: hpath 整段 (含笔记本名时先试, 命中即用)
+#     b. 「笔记本名 + 剩余路径」精确 (find/ls 输出格式)
+#     c. 路径后缀匹配 (部分路径, 如 /AI伴学)
+#     d. 标题搜索回退
+#   无 / 开头:
+#     e. 含 / 时按 b/c 处理 (工作/调课)
+#     f. 标题搜索 (精确同名优先)
+#     g. 标题空则后缀匹配 (目录名场景, 如 cat AI伴学)
 sy_locate_docs() { # <ctx> <引用>
   local ctx="$1" ref="$2"
-  local out
+  local out names
+  names="$(sy_nb_names "$ctx")" || return $?
   if [[ "$ref" =~ ^[0-9]{14}-[a-z0-9]{6,8}$ ]]; then
     out="$(sy_json "$ctx" sql "SELECT id, hpath, box FROM blocks WHERE id='$ref' AND type='d'")" || return $?
-    echo "$out" | "$SY_NODE" "$SY_LIB_DIR/fmt.js" docs-sql
+    echo "$out" | NB_NAMES="$names" "$SY_NODE" "$SY_LIB_DIR/fmt.js" docs-sql
     return 0
   fi
-  if [[ "$ref" == /* ]] || [[ "$ref" == */* ]]; then
-    local esc="${ref//\'/\'\'}"
-    out="$(sy_json "$ctx" sql "SELECT id, hpath, box FROM blocks WHERE hpath='$esc' AND type='d'")" || return $?
+  local work="${ref#/}"
+  local esc="${work//\'/\'\'}"
+  if [[ "$ref" == /* ]]; then
+    # a. hpath 整段精确
+    out="$(sy_json "$ctx" sql "SELECT id, hpath, box FROM blocks WHERE hpath='/$esc' AND type='d'")" || return $?
     if [[ "$(echo "$out" | "$SY_NODE" "$SY_LIB_DIR/fmt.js" len)" -gt 0 ]]; then
-      echo "$out" | "$SY_NODE" "$SY_LIB_DIR/fmt.js" docs-sql
+      echo "$out" | NB_NAMES="$names" "$SY_NODE" "$SY_LIB_DIR/fmt.js" docs-sql
       return 0
     fi
-    # 精确 hpath 无匹配 -> 尝试「笔记本名 + hPath」(find 输出格式: 工作/调课)
-    local work first rest nb
-    work="${ref#/}"
+    # b. 笔记本前缀 + 剩余路径
     if [[ "$work" == */* ]]; then
-      first="${work%%/*}"
-      rest="${work#*/}"
-      if ! [[ "$first" =~ ^[0-9]{14}-[a-z0-9]{6,8}$ ]]; then
-        nb="$(sy_resolve_notebook_soft "$ctx" "$first")" || return $?
-        if [[ -n "$nb" ]]; then
-          local hpath esc2
-          hpath="/$rest"
-          esc2="${hpath//\'/\'\'}"
-          out="$(sy_json "$ctx" sql "SELECT id, hpath, box FROM blocks WHERE box='$nb' AND hpath='$esc2' AND type='d'")" || return $?
-          if [[ "$(echo "$out" | "$SY_NODE" "$SY_LIB_DIR/fmt.js" len)" -gt 0 ]]; then
-            echo "$out" | "$SY_NODE" "$SY_LIB_DIR/fmt.js" docs-sql
-            return 0
-          fi
-        fi
+      out="$(sy_locate_nbpath "$ctx" "$work")" || return $?
+      if [[ -n "$out" ]]; then
+        echo "$out" | NB_NAMES="$names" "$SY_NODE" "$SY_LIB_DIR/fmt.js" docs-sql
+        return 0
       fi
     fi
-    # 精确路径无匹配 -> 按标题回退
+    # c. 后缀匹配
+    out="$(sy_locate_suffix "$ctx" "$work")" || return $?
+    if [[ "$(echo "$out" | "$SY_NODE" "$SY_LIB_DIR/fmt.js" len)" -gt 0 ]]; then
+      echo "$out" | NB_NAMES="$names" "$SY_NODE" "$SY_LIB_DIR/fmt.js" docs-sql
+      return 0
+    fi
+  elif [[ "$work" == */* ]]; then
+    # e. 无前导 / 含 / (find 输出格式: 工作/调课): 先笔记本前缀, 再后缀
+    out="$(sy_locate_nbpath "$ctx" "$work")" || return $?
+    if [[ -n "$out" ]]; then
+      echo "$out" | NB_NAMES="$names" "$SY_NODE" "$SY_LIB_DIR/fmt.js" docs-sql
+      return 0
+    fi
+    out="$(sy_locate_suffix "$ctx" "$work")" || return $?
+    if [[ "$(echo "$out" | "$SY_NODE" "$SY_LIB_DIR/fmt.js" len)" -gt 0 ]]; then
+      echo "$out" | NB_NAMES="$names" "$SY_NODE" "$SY_LIB_DIR/fmt.js" docs-sql
+      return 0
+    fi
   fi
-  # 标题: document search, 精确同名优先
-  sy_json "$ctx" document search "$ref" |
-    "$SY_NODE" "$SY_LIB_DIR/fmt.js" docs-search 1 "" "" "$ref" || return $?
+  # d/f. 标题: document search, 精确同名优先
+  out="$(sy_json "$ctx" document search "$ref" |
+    "$SY_NODE" "$SY_LIB_DIR/fmt.js" docs-search 1 "" "" "$ref")" || return $?
+  if [[ "$(echo "$out" | "$SY_NODE" "$SY_LIB_DIR/fmt.js" len)" -gt 0 ]]; then
+    echo "$out"
+    return 0
+  fi
+  # g. 无 / 引用补后缀匹配 (目录名场景, 如 cat AI伴学)
+  if [[ "$work" != */* ]] && [[ -n "$work" ]]; then
+    out="$(sy_locate_suffix "$ctx" "$work")" || return $?
+    if [[ "$(echo "$out" | "$SY_NODE" "$SY_LIB_DIR/fmt.js" len)" -gt 0 ]]; then
+      echo "$out" | NB_NAMES="$names" "$SY_NODE" "$SY_LIB_DIR/fmt.js" docs-sql
+      return 0
+    fi
+  fi
+  echo "$out"
+}
+
+# 笔记本前缀路径精确匹配: 第一段为笔记本名时按 box + hpath 精确
+#   成功: stdout = JSON 数组; 第一段不是笔记本名: stdout 空
+sy_locate_nbpath() { # <ctx> <work(无前导/)> -> stdout: JSON 数组或空
+  local ctx="$1" work="$2"
+  local first rest nb
+  first="${work%%/*}"
+  rest="${work#*/}"
+  [[ "$first" == "$work" ]] && return 0
+  if [[ "$first" =~ ^[0-9]{14}-[a-z0-9]{6,8}$ ]]; then
+    nb="$first"
+  else
+    nb="$(sy_resolve_notebook_soft "$ctx" "$first")" || return $?
+  fi
+  [[ -n "$nb" ]] || return 0
+  local esc
+  esc="${rest//\'/\'\'}"
+  sy_json "$ctx" sql "SELECT id, hpath, box FROM blocks WHERE box='$nb' AND hpath='/$esc' AND type='d'"
 }
 
 # 解析文档引用为唯一 doc id; 无/多匹配时报错 (多匹配时列出候选)
@@ -346,7 +412,9 @@ sy_resolve_doc() {
     sy_die 1 "$ctx: 找不到文档 '$ref'" "用 'siyuan find $ref' 搜相近文档, 或 'siyuan ls' 看笔记本结构"
   fi
   if [[ "$n" -gt 1 ]]; then
-    echo "$out" | "$SY_NODE" "$SY_LIB_DIR/fmt.js" candidates >&2
+    local names
+    names="$(sy_nb_names "$ctx")" || return $?
+    echo "$out" | NB_NAMES="$names" "$SY_NODE" "$SY_LIB_DIR/fmt.js" candidates >&2
     sy_die 1 "$ctx: 文档引用 '$ref' 有 $n 个匹配" "用完整路径消歧, 如 'siyuan $ctx /完整/路径/标题'"
   fi
   echo "$out" | "$SY_NODE" "$SY_LIB_DIR/fmt.js" ids

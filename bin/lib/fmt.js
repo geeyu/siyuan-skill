@@ -94,7 +94,8 @@ function unescapeHtml(s) {
     .replace(/&#39;/g, "'");
 }
 function docFromSearch(r) {
-  return { id: r.path.split('/').pop().replace(/\.sy$/, ''), hPath: r.hPath, box: r.box };
+  const box = r.box || '';
+  return { id: r.path.split('/').pop().replace(/\.sy$/, ''), hPath: fullDocPath(r.hPath, box), box };
 }
 // markdown 单元格转义 (| → \|, 换行 → 空格)
 function escCell(v) {
@@ -109,12 +110,13 @@ function nbName(box) {
   }
   return box;
 }
-// 完整文档路径: 「笔记本名 + hPath」(去前导 /), 与 find 输出格式一致, 可直接喂 which/ls
+// 完整文档路径: 「/笔记本名 + hPath」(带前导 /, 绝对路径直觉; 与输入格式双向一致)
 function fullDocPath(hPath, box) {
   const hp = (hPath || '').replace(/^\//, '');
   const name = nbName(box || '');
   const base = name && name !== box ? name : '';
-  return base ? (hp ? base + '/' + hp : base) : hp;
+  const p = base ? (hp ? base + '/' + hp : base) : hp;
+  return p ? '/' + p : '/';
 }
 
 switch (cmd) {
@@ -146,10 +148,10 @@ switch (cmd) {
     for (const d of parse()) console.log(d.id);
     break;
   case 'candidates':
-    for (const d of parse()) console.log('    ' + d.id + '\t' + d.hPath + '\t' + d.box);
+    for (const d of parse()) console.log('    ' + d.id + '\t' + fullDocPath(d.hPath, d.box) + '\t' + d.box);
     break;
   case 'docs-sql':
-    console.log(JSON.stringify(parse().map((r) => ({ id: r.id, hPath: r.hpath, box: r.box }))));
+    console.log(JSON.stringify(parse().map((r) => ({ id: r.id, hPath: fullDocPath(r.hpath, r.box), box: r.box }))));
     break;
   case 'docs-search': {
     const exact = args[0] === '1';

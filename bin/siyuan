@@ -84,7 +84,7 @@ siyuan — 思源笔记命令行 (基于 SiYuan-Kernel 3.8+, shell 风格)
   例: siyuan ls --markdown > 目录.md ; siyuan sql "SELECT ..." --markdown
 
 查询 (输出行式可管道组合, --json/--markdown 出结构化/笔记格式):
-  ls [笔记本] [路径] [-l] [--json|--markdown]    列笔记本/文档 (笔记本支持 id 或中文名)
+  ls [引用] [-l] [--json|--markdown]            列笔记本/文档 (引用=笔记本名|id|任意层级路径)
   tree <doc> [-l] [--json|--markdown]            标题树/大纲
   cat <doc> [--json|--markdown]                  读文档 markdown (最准; markdown=原样)
   head/tail <doc> [-n N] [--json|--markdown]     读文档开头/末尾 N 行 (默认 10)
@@ -139,8 +139,10 @@ siyuan — 思源笔记命令行 (基于 SiYuan-Kernel 3.8+, shell 风格)
 其他:
   help [命令]                          帮助; notebooks/list/read/get/outline/search 为旧名别名
 
-文档引用 <doc>: doc-id | 标题 | 路径 (hPath 或带笔记本前缀, 如 /工作/调课、工作/调课);
-  多匹配报错并列出候选; 用 which 定位 (find/grep 输出路径可直接喂 which)
+文档引用 <doc>: id | 标题 | 路径 (统一解析链, 全部命令一致):
+  完整路径 /工作/日志/2026/AI伴学 (带不带前导 / 均可) → hpath /日志/2026/AI伴学
+  → 部分路径 /AI伴学 (后缀匹配, 唯一即命中) → 标题 (精确同名优先)
+  多匹配一律列出候选并报错; find/grep/which -v 输出统一为完整路径, 可直接喂回
 环境变量: SIYUAN_KERNEL / SIYUAN_WORKSPACE / SIYUAN_FORMAT(text|json) /
           SIYUAN_TIMEOUT(默认60) / SIYUAN_DEFAULT_NOTEBOOK / SIYUAN_API_HOST / SIYUAN_API_PORT
 EOF
@@ -150,12 +152,14 @@ EOF
 sy_usage() {
   case "$1" in
     ls)       cat <<'EOF'
-用法: siyuan ls [笔记本] [路径] [-l] [--json|--markdown]
+用法: siyuan ls [引用] [-l] [--json|--markdown]
   无参: 列笔记本 (设 SIYUAN_DEFAULT_NOTEBOOK 时列该库根目录文档)
-  ls 工作          列笔记本「工作」根目录文档
-  ls 工作 /供应链   列 /供应链 下的文档 (支持 hpath 或 internal path)
-  -l  详情 (子文档数/大小/修改时间); --json 稳定字段 {id,name,path,size,subFileCount,mtime};
-      --markdown 表格 (名称/ID/笔记本), 如 siyuan ls --markdown > 目录.md
+  引用: 笔记本名/id (列库根) | 任意层级路径 (列目录, 部分路径唯一即命中)
+  ls 工作                 列笔记本「工作」根目录
+  ls /工作/日志/2026/AI伴学  列目录 (也支持 ls /AI伴学 部分路径)
+  ls 2026xxxx-abc         按文档 id 列其子文档
+  多匹配列候选并报错; 双参 ls <笔记本> /路径 仍兼容
+  -l  详情; --json 稳定字段; --markdown 表格 (如 siyuan ls --markdown > 目录.md)
 EOF
 ;;
     tree)     cat <<'EOF'
