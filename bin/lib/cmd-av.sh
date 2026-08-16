@@ -11,7 +11,7 @@
 #   ① 值按字段类型自动嵌套 (select 用 mSelect 数组 / date 用毫秒时间戳), 含引号值
 #      支持 --values @file 或 stdin;
 #   ② item update / item add 的 "ok" 不可信, 所有写操作后 render 验证真实生效;
-#   ③ 原 scripts/av_ops.js 能力已迁移至此 (av_ops.js 保留供旧脚本引用)。
+#   ③ 原 scripts/av_ops.js 能力已迁移至此 (旧工具库已删除)。
 
 # av 组帮助 (bin/siyuan 的 sy_usage av 调用)
 av_usage() { # [子命令]
@@ -67,7 +67,7 @@ EOF
   verify)
     cat <<'EOF'
 用法: siyuan av verify <avID|库名> [--json|--markdown]
-    逐行打印所有字段实际值 (验证写入的权威入口; 替代原 av_ops.js verify)
+    逐行打印所有字段实际值 (验证写入的权威入口)
     --markdown 表格
 EOF
     ;;

@@ -6,7 +6,7 @@
 
 ## 封装命令 vs 底层命令
 
-封装层 (`siyuan <cmd>`) 覆盖了高频操作 (文档读写、SQL、搜索等)。底层命令 (`siyuan raw <cmd>`) 是 kernel 完整能力, 封装层未覆盖时走 raw。
+封装层 (`siyuan <cmd>`) 覆盖高频操作 (文档读写、SQL、搜索、编辑、数据库), **引用协议统一** (id/路径/标题/通配, 见 SKILL.md)。底层命令 (`siyuan raw <cmd>`) 是 kernel 完整能力, 封装层未覆盖时走 raw。
 
 ---
 
@@ -23,7 +23,7 @@
 | `raw notebook set-icon --id <id> --icon <icon>` | 设置笔记本图标 |
 | `raw notebook random-icon [--id <id>]` | 随机设置图标 |
 
-封装: `siyuan notebooks` (= `notebook list`)
+封装: `siyuan ls` (列笔记本) / `siyuan ls <笔记本名>` (列库根文档)
 
 ## document — 文档
 
@@ -39,9 +39,9 @@
 | `raw document remove --id <id>` | 删除文档 |
 | `raw document search <keyword>` | 搜索文档 |
 
-封装: `siyuan write` / `siyuan read` / `siyuan search` / `siyuan get` / `siyuan move` / `siyuan remove`
+封装: `siyuan touch`/`write` (建) / `siyuan cat` (读) / `siyuan find` (搜) / `siyuan stat` (信息) / `siyuan mv`/`move` (移) / `siyuan cp` (复制) / `siyuan rm`/`remove` (删) / `siyuan rename` (改名) / `siyuan edit --replace` (整篇替换)
 
-⚠ `document move` 只能跨笔记本。同笔记本改父级用封装 `siyuan move` (走 HTTP moveDocs)。
+⚠ `document move` 只能跨笔记本 (`--notebook` 必填)。封装 `siyuan mv <doc> --parent <父文档>` 自动取父文档所在笔记本, 同/跨笔记本都适用 (CLI 实现, 不依赖 HTTP)。
 
 ## block — 块操作
 
@@ -62,7 +62,7 @@
 | `raw block batch-get --ids id1,id2,...` | 批量取块信息 |
 | `raw block batch-kramdown --ids id1,id2,...` | 批量取 kramdown |
 
-封装: `siyuan children` / `siyuan append` / `siyuan update-block` / `siyuan insert-block` / `siyuan delete-block`
+封装: `siyuan children` (子块) / `siyuan edit --append|--prepend|--update` (追加/插入/改块) / `siyuan append` / `siyuan update-block` / `siyuan insert-block` / `siyuan delete-block`; 块引用接受 id 或文档引用
 
 ⚠ `block insert` 的 `--parent` 必填, `--previous` 只是兄弟锚点。封装 `insert-block --previous <id>` 会自动查其 parent。
 
@@ -77,22 +77,22 @@
 | `raw sql "<statement>"` | 执行 SQL (查 blocks/refs/spans 等) |
 | `raw search <query>` | 全文搜索 |
 
-封装: `siyuan outline` / `siyuan backlinks` / `siyuan sql` / `siyuan search` (后者搜文档)
+封装: `siyuan tree` (大纲) / `siyuan backlinks` (反链) / `siyuan sql` (查询) / `siyuan find` (搜文档标题) / `siyuan grep` (搜内容)
 
 ## database — 数据库 (属性视图)
 
-**封装命令组 `siyuan av ...`** (适配 3.8.0 B1/B2, 推荐):
+**封装命令组 `siyuan av ...`** (适配 3.8.0 B1/B2, 推荐; avID 支持按库名解析):
 
 | 命令 | 作用 |
 |------|------|
-| `av list [--json]` | 列出全部数据库 (avID+名称+路径) |
-| `av keys <avID> [--json]` | 列字段 (name/type/keyID; B1: 3.8 keys 为对象包装) |
-| `av rows <avID> [--limit N] [-H] [--json]` | 列行数据 (B2: 走 render; TSV 可管道) |
-| `av get <avID> --row <rowID> [--json]` | 单行详情 |
-| `av add <avID> --values '<JSON>' [--content <标题>] [--block <doc-id>]` | 加行 (值自动嵌套, 自动反查 itemID, 写后验证) |
+| `av list [--json\|--markdown]` | 列出全部数据库 (avID+名称+路径) |
+| `av keys <avID> [--json\|--markdown]` | 列字段 (name/type/keyID; B1: 3.8 keys 为对象包装, 已适配) |
+| `av rows <avID> [--limit N] [-H] [--json\|--markdown]` | 列行数据 (B2: 走 render; TSV 可管道) |
+| `av get <avID> --row <rowID> [--json\|--markdown]` | 单行详情 |
+| `av add <avID> --values '<JSON>' [--content <标题>] [--block <doc>]` | 加行 (值自动嵌套, 自动反查 itemID, 写后验证; --block 引用支持 id/标题/路径) |
 | `av update <avID> --row <rowID> --values '<JSON>'` | 改行 (写后 render 验证) |
 | `av remove <avID> --row <rowID>` | 删行 (删后验证) |
-| `av verify <avID> [--json]` | 逐行打印实际值 (验证权威入口) |
+| `av verify <avID> [--json\|--markdown]` | 逐行打印实际值 (验证权威入口) |
 | `av export <avID>` | 导出全量 JSON (备份) |
 
 完整规范 (字段类型/值结构/录入流程/排查记录库设计): 见 [database.md](database.md)。

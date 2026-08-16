@@ -108,7 +108,7 @@ CLI 和 MCP 行为一致。
 `--value '<json>'` 单引号包裹时, JSON 内双引号与 shell 引号嵌套冲突, 导致 value 被截断**静默不落库** (CLI 仍返回 ok)。
 根因: shell 对 `'..."..."...'` 的处理把 JSON 破坏, 内核反序列化时子对象为 nil 跳过。
 可靠做法: `echo -n "$VAL" > /tmp/v.txt` 再 `--value "$(cat /tmp/v.txt)"`, 或直接用 `siyuan av add/update --values @file/stdin` (自动处理引号与嵌套)。
-这是本次重建排查记录库踩到的核心坑, 已封装进 av 命令组 (旧 av_ops.js 同样封装, 保留供旧脚本引用)。
+这是本次重建排查记录库踩到的核心坑, 已封装进 av 命令组。
 
 ## 14. 批量整理文档 (移动/重命名/建目录) 的踩坑规范
 

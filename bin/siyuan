@@ -104,8 +104,8 @@ siyuan — 思源笔记命令行 (基于 SiYuan-Kernel 3.8+, shell 风格)
                                       建文档 (默认笔记本根; createDocWithMd 三步语义, 无中间块残留)
   edit <doc> (--append|--prepend|--update <block-id>|--replace) <text> [--file|stdin]
                                       统一编辑入口: 追加/开头插入/改块/整篇替换
-  mv <doc> --to <parent-id> [--notebook <nb>]  移动文档 (同/跨笔记本, 输出文档 id)
-  cp <doc> [--to <parent-id>]         复制文档 (duplicate, 输出新副本 id)
+  mv <doc> --parent <父文档> [--notebook <nb>]  移动文档 (同/跨笔记本; 别名 --to, 输出文档 id)
+  cp <doc> [--parent <父文档>]         复制文档 (duplicate; 别名 --to, 输出新副本 id)
   rm <doc>                            删除文档 (接受 id/标题/路径引用, 输出文档 id)
   diff <docA> <docB> [diff 参数...]    对比两文档 markdown (统一 diff 格式; 退出码 0=同 1=异)
   rename <doc> <新标题>                重命名 (IAL title + H1 同步, 输出文档 id)

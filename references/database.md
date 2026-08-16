@@ -24,7 +24,7 @@
 
 ## ⚠️ 3.8.0 breaking 变更 (B1/B2, 必读)
 
-> 来源: `COMPAT-REPORT-3.8.0.md` (对实际安装内核 3.8.0 验证)。3.7 → 3.8 有两处**输出结构**变更, 影响所有依赖旧结构的流程:
+> 来源: 对实际安装内核 3.8.0 的验证。3.7 → 3.8 有两处**输出结构**变更, 影响所有依赖旧结构的流程:
 
 ### B1. `database keys` 输出从数组 → 对象包装
 
@@ -183,63 +183,8 @@ siyuan raw database item update --av "$AV" --key <keyID> --item "$ITEM" \
   --value "$(cat /tmp/av_val.txt)"
 ```
 
-**做法 2 — 用 av_ops.js 工具库** (JS 里无 shell 引号问题):
-```javascript
-const av = require('./scripts/av_ops.js');
-av.setCellText(avID, keyID, itemID, '含"引号"的内容');  // 自动处理
-```
+> **推荐直接 `siyuan av update --values @file/stdin`** (自动处理引号与嵌套), 无需手工构造 value。
 
-## 工具库 scripts/av_ops.js (旧, 仅供旧脚本引用)
-
-> **已迁移至 `siyuan av` 命令组** (能力等价: 自动嵌套/引号处理/写入验证), 新代码请用 av 命令。以下保留供引用旧脚本时对照。
-
-CLI 和 require 两种用法:
-
-```bash
-# CLI 用法
-node scripts/av_ops.js search "排查记录"        # 按名查 avID
-node scripts/av_ops.js keys <avID>               # 列字段
-node scripts/av_ops.js verify <avID>             # 打印所有行字段实际值 (验证写入)
-node scripts/av_ops.js export <avID>             # 导出为 JSON (备份/迁移用)
-```
-
-```javascript
-// require 用法 (批量操作推荐)
-const av = require('./scripts/av_ops.js');
-const AV = av.search('排查记录');
-
-// 加行 + 填值 (一行代码搞定, 自动构造正确结构)
-const itemId = av.addRow(AV, docId, '排查：XXX');
-av.setCellSelect(AV, av.keyId(AV,'业务模块'), itemId, '调课调讲');  // select 自动用 mSelect
-av.setCellDate(AV, av.keyId(AV,'报告日期'), itemId, '2026-07-08'); // 自动转毫秒时间戳
-av.setCellText(AV, av.keyId(AV,'排查结论'), itemId, '含"引号"的结论'); // 自动处理引号
-av.setCellCheckbox(AV, av.keyId(AV,'是否已修复'), itemId, true);
-
-// 或批量填值
-av.fillRow(AV, itemId, {
-  '业务模块': '调课调讲',           // string 自动判 text
-  '问题状态': '已解决',
-  '排查结论': '结论内容',
-  '是否已修复': true,               // boolean 自动判 checkbox
-});
-
-// 验证
-av.verify(AV);
-```
-
-> **3.8.0 适配要点** (对应 COMPAT-REPORT-3.8.0.md 的 B1/B2): av_ops.js 内部数据访问按 3.8.0 结构处理 — `listKeys` 兼容对象包装 (`Array.isArray(out) ? out : out.keys`); 行数据 (itemID 反查 / verify / export) 从 `database get` 的 `keyValues` 改为 `database render` 的 `view.rows`。**对外接口不变** (search/keys/verify/export/addRow/setCellXxx/fillRow)。
-
-便捷方法对照表 (自动构造正确嵌套结构, 无需记 JSON):
-
-| 方法 | 对应字段类型 | 说明 |
-|------|------------|------|
-| `setCellText(avID,k,it,val)` | text | `{text:{content:val}}` |
-| `setCellUrl(avID,k,it,val)` | url/email/phone | `{url:{content:val}}` |
-| `setCellSelect(avID,k,it,opt)` | select | **自动用 mSelect 数组** (思源坑点) |
-| `setCellMSelect(avID,k,it,opts[])` | mSelect | 多选 |
-| `setCellDate(avID,k,it,'2026-07-08')` | date | **自动转 Unix 毫秒** |
-| `setCellCheckbox(avID,k,it,bool)` | checkbox | `{checkbox:{checked:bool}}` |
-| `fillRow(avID,it,{字段:值})` | 混合 | 自动判类型, 批量填 |
 
 ## 排查记录库字段设计 (当前规范)
 
@@ -277,7 +222,7 @@ AV=20260709112905-e1gm9bd  # 排查记录库
 siyuan av keys "$AV"
 
 # 2. 先写排查文档 (拿到 DOC_ID), 建议挂到对应业务子目录
-DOC=$(cat report.md | siyuan write --notebook 工作 --title "排查：XXX" --parent-id "<业务子目录id>")
+DOC=$(cat report.md | siyuan write --notebook 工作 --title "排查：XXX" --parent "<业务子目录id>")
 
 # 3. 加一行绑定文档 + 填值 (自动反查 itemID, 写后自动验证)
 ITEM=$(siyuan av add "$AV" --block "$DOC" --content "排查：XXX" \
