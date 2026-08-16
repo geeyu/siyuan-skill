@@ -1,14 +1,9 @@
 # 思源数据库 (属性视图 / Attribute View) 完整规范
 
 > 思源的「数据库」官方叫**属性视图 (Attribute View, AV)**, 是嵌在文档里的表格型结构化数据。
-<<<<<<< HEAD
 > **首选 `siyuan av` 命令组** (自动处理嵌套值/引号/反查/写入验证), 底层 `siyuan raw database ...` 透传备用。
 > 源码: `kernel/av/value.go` (结构体), `kernel/model/attribute_view.go` (逻辑)
 > 兼容性: 适配 SiYuan-Kernel **3.8.0** — B1: `database keys` 输出为 `{id,name,keys:[]}` 对象; B2: 行数据不再由 `database get` 提供, 全部走 `database render` (详见下方「3.8.0 结构变更」)
-=======
-> **av 命令组** = 底层透传 `siyuan raw database ...` + 工具库 `scripts/av_ops.js` (推荐)。
-> 源码: `kernel/av/value.go` (结构体), `kernel/model/attribute_view.go` (逻辑); 版本 SiYuan-Kernel **3.8.0** (含 B1/B2 breaking, 见下)
->>>>>>> gittree-wf-siyuan-w1-4
 
 ## 何时使用
 
@@ -67,15 +62,9 @@
 | 命令 | 作用 |
 |------|------|
 | `raw database search "<关键词>"` | 按名称搜索数据库, 拿 avID |
-<<<<<<< HEAD
 | `raw database get --av <avID>` | 获取数据库结构元数据 (**3.8.0 起不再含行数据**, 行数据用 render) |
 | `raw database keys --av <avID>` | 列出所有字段 (列) 及 keyID (3.8.0 为 `{id,name,keys:[]}`) |
 | `raw database render --av <avID> [--query <kw>] [--view <id>] [-p 页] [-s 页大小]` | 渲染视图数据 (行数据唯一来源) |
-=======
-| `raw database get --av <avID>` | 获取数据库**结构元数据** `{id,name,keys,views}` (3.8.0 起无行数据, 见 B2) |
-| `raw database keys --av <avID>` | 列出所有字段 (列) 及 keyID (**3.8.0 返回 `{id,name,keys:[]}` 包装**, 见 B1) |
-| `raw database render --av <avID> [--query <kw>] [--view <id>]` | **取行数据的唯一入口** (3.8.0): `view.rows[].id`=itemID, `view.rows[].cells[].value`=单元格 |
->>>>>>> gittree-wf-siyuan-w1-4
 | `raw database item add --av <avID> --block <blockID> --content "标题"` | 新增一行 (绑定文档块) |
 | `raw database item add --av <avID> --detached --content "标题"` | 新增游离行 (不绑文档块) |
 | `raw database item update --av <avID> --key <keyID> --item <itemID> --value '<json>'` | 更新某个单元格 (**ok 不可信, 必须 render 验证**) |
@@ -94,14 +83,10 @@
 
 ## ⚠️ 值结构对照表 (最关键的坑, raw 底层用)
 
-<<<<<<< HEAD
 > **用 `siyuan av` 命令组则不需要手工构造** — `av add/update` 的 `--values '{字段名: 值}'` 会自动按字段类型嵌套 (select→mSelect 数组 / date→毫秒时间戳 / checkbox→布尔), 并在写后自动验证。
 > 下表仅在使用 `raw database item update` 手工传 `--value` 时需要。
 
 `database item update` 返回 `ok` **不代表值真写进去了**, 必须用 `database render` 验证。各字段类型 value 的 JSON 结构**必须按字段类型嵌套** (源码 `kernel/av/value.go` 的 ValueXxx 结构体决定):
-=======
-`database item update` 返回 `ok` **不代表值真写进去了**, 必须用 `database render` 验证 (3.8.0; 旧版用 `database get`)。各字段类型 value 的 JSON 结构**必须按字段类型嵌套** (源码 `kernel/av/value.go` 的 ValueXxx 结构体决定):
->>>>>>> gittree-wf-siyuan-w1-4
 
 | 类型 | 正确 `--value` JSON | 错误写法 (CLI 会返回 ok 但不落库) |
 |------|---------------------|------|
@@ -142,7 +127,6 @@
 
 - **blockID**: 绑定的文档块 ID (item add 时用 `--block` 传入的值), 是「首列主键」指向的文档。
 - **itemID**: 数据库行的 ID, **每次 item add 时新生成** (`ast.NewNodeID()`), **不等于 blockID** (源码 AddAttributeViewBlock 第 3685 行)。detached 行同理也是新生成。
-<<<<<<< HEAD
 - **item add 不返回 itemID**: CLI 和 MCP 都只返回 `ok`/`item added`, 必须 render 反查。反查方法 (B2): `view.rows[].id` 即 itemID; block 类型单元格的 `value.block.id` 是绑定的文档块 ID。**av add 已自动反查** (--block 模式按文档 ID 精确匹配; detached 模式按标题匹配, 失败取行尾新行)。
 
 ## 录入一条记录的标准流程 (用 av 命令)
@@ -170,18 +154,6 @@
 | 完整 value 对象 | `{"字段":{"type":"text","text":{"content":"x"}}}` | 原样透传 |
 
 未知字段名 / 只读类型 (rollup/created/updated/lineNumber) 会报错退出 1。block 主键列由 `--content`/`--block` 设置, values 里写它会被忽略并提示。
-=======
-- **item add 不返回 itemID**: CLI 和 MCP 都只返回 `ok`/`item added`, 必须反查。**3.8.0 反查用 `database render`**: 主键 block 列的 `view.rows[].cells[]` 中 type=block 的 `value.blockID` 即 itemID; 而 `value.block.id` 是绑定的文档块 ID。
-
-## 录入一条记录的标准流程 (3.8.0)
-
-1. **先写好排查文档** (用 `siyuan write` 命令, 拿到 doc-id)
-2. **查字段结构** 拿 keyID: `siyuan raw database keys --av <avID> -f json` (3.8.0: 取 `.keys`)
-3. **加一行** 绑定文档: `siyuan raw database item add --av <avID> --block <doc-id> --content "标题" -f json`
-   - 返回 ok 但不返回 itemID, 用 `database render` 反查 (见上)
-4. **逐字段填值** 用上表正确结构: `siyuan raw database item update --av <avID> --key <keyID> --item <itemID> --value '<json>'`
-5. **验证**: `node scripts/av_ops.js verify <avID>` (ok 不代表成功)
->>>>>>> gittree-wf-siyuan-w1-4
 
 ## ⚠️ value 含双引号时的传参陷阱 (关键经验)
 
@@ -217,11 +189,7 @@ const av = require('./scripts/av_ops.js');
 av.setCellText(avID, keyID, itemID, '含"引号"的内容');  // 自动处理
 ```
 
-<<<<<<< HEAD
 ## 工具库 scripts/av_ops.js (旧, 仅供旧脚本引用)
-=======
-## 工具库 scripts/av_ops.js (av 命令组核心, 推荐)
->>>>>>> gittree-wf-siyuan-w1-4
 
 > **已迁移至 `siyuan av` 命令组** (能力等价: 自动嵌套/引号处理/写入验证), 新代码请用 av 命令。以下保留供引用旧脚本时对照。
 
@@ -321,12 +289,7 @@ cat > /tmp/v.json <<'EOF'
 EOF
 siyuan av update "$AV" --row "$ITEM" --values @/tmp/v.json
 
-<<<<<<< HEAD
 # 5. ⚠️ 验证 (写入以实际值为准, ok 不代表成功)
 siyuan av verify "$AV"
 # 或单行: siyuan av get "$AV" --row "$ITEM"
-=======
-# 5. ⚠️ 验证 (ok 不代表成功, 必须查实际值; 3.8.0 用 render 取行数据)
-node scripts/av_ops.js verify "$AV" | head -30
->>>>>>> gittree-wf-siyuan-w1-4
 ```

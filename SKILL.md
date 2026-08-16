@@ -102,6 +102,7 @@ siyuan raw export docx --id <id> --output <file>    # 导出 Word
 5. **mv/move、cp 同/跨笔记本都适用**: `mv <doc> --parent <父文档>` 自动取父文档所在笔记本, 跨库无需额外参数; 底层 `document move` 只能跨笔记本, 封装层自动处理。
 6. **不知道参数时**: `siyuan raw-help <command>` 查帮助, 不要猜。
 7. **退出码**: 0=成功 1=业务错误 2=用法错误 3=配置错误 124=超时; 内核调用默认 60 秒超时 (`SIYUAN_TIMEOUT` 可调)。`diff` 例外: 0=相同 1=有差异 (同系统 diff)。
+8. **批量整理文档 (⚠ 高频事故区)**: ① `rm <目录>` 会**级联删除全部子文档** —— 先移出子文档再删目录, `ls` 空目录显示自身不是"有内容"; ② 同名文档很常见 (跨库/跨目录), 批量循环**用 id 不用标题** (`ls 目录 | while read -r id name; do mv "$id" ...`), 一个歧义会中断整批; ③ rename/建目录前先 `find` 预检重名; ④ 完整流程见 [references/conventions.md](references/conventions.md) §14。
 
 > 详细约定与源码依据: 见 [references/conventions.md](references/conventions.md)。
 

@@ -93,32 +93,51 @@ parent=$(siyuan sql "SELECT parent_id FROM blocks WHERE id='$prev'" | head -1)
 ## 11. 数据库 item add 不返回 itemID
 
 add 成功只返回 `ok`/`item added`, itemID (行 ID) 每次新生成且**不等于传入的 blockID**。
-<<<<<<< HEAD
 3.8.0 起 (B2) 需用 `database render` 反查 `view.rows[].id` (block 单元格的 `value.block.id` 是绑定的文档块 ID); `database get` 已不再返回行数据。
 **推荐直接用 `siyuan av add`** (自动反查 + 写后验证), 底层 raw 行为见上。
-=======
-反查 (3.8.0): `database render` 的 `view.rows[].cells[]` 中主键 block 列的 `value.blockID` 即 itemID (不是 `value.block.id`, 后者是绑定的文档块)。
->>>>>>> gittree-wf-siyuan-w1-4
 CLI 和 MCP 行为一致。
 源码: `kernel/model/attribute_view.go` AddAttributeViewBlock 第 3685 行 `srcItemID = ast.NewNodeID()`。
 
 ## 12. 字段不能重命名, 只能删后重建
 
 思源 CLI 没有 `key rename` 命令, 字段创建后名称固定。要改名只能 `key remove` 删除后 `key add` 新建, **会丢失该字段所有行的值**。
-<<<<<<< HEAD
 重建排查记录库字段时的正确流程: 先 `siyuan av export <avID>` 导出全量数据备份 → 删旧字段 → 建新字段 → 用 `siyuan av add/update` 按新字段名回填。
-=======
-重建排查记录库字段时的正确流程: 先 `raw database render --av <avID>` 导出全量数据备份 → 删旧字段 → 建新字段 → 用 av_ops.js 按新字段名回填。
->>>>>>> gittree-wf-siyuan-w1-4
 
 ## 13. value 含双引号时用临时文件传递 (shell 脚本)
 
 `--value '<json>'` 单引号包裹时, JSON 内双引号与 shell 引号嵌套冲突, 导致 value 被截断**静默不落库** (CLI 仍返回 ok)。
 根因: shell 对 `'..."..."...'` 的处理把 JSON 破坏, 内核反序列化时子对象为 nil 跳过。
-<<<<<<< HEAD
 可靠做法: `echo -n "$VAL" > /tmp/v.txt` 再 `--value "$(cat /tmp/v.txt)"`, 或直接用 `siyuan av add/update --values @file/stdin` (自动处理引号与嵌套)。
 这是本次重建排查记录库踩到的核心坑, 已封装进 av 命令组 (旧 av_ops.js 同样封装, 保留供旧脚本引用)。
-=======
-可靠做法: `echo -n "$VAL" > /tmp/v.txt` 再 `--value "$(cat /tmp/v.txt)"`, 或直接用 `scripts/av_ops.js` (JS 里无 shell 引号问题)。
-这是重建排查记录库踩到的核心坑, 已封装进 av_ops.js。
->>>>>>> gittree-wf-siyuan-w1-4
+
+## 14. 批量整理文档 (移动/重命名/建目录) 的踩坑规范
+
+真实案例: 整理 AI伴学 36 篇文档 (8/16), 踩到以下坑, 沉淀为规范:
+
+### 14.1 ⚠ rm 目录会级联删除全部子文档
+
+`rm <目录文档>` 删除目录时, **其下所有子文档被一并删除** (思源级联语义)。
+**规范**: 删目录前必须先移出全部子文档 → 确认 `ls <目录>` 无子项 → 再 `rm <目录>`。
+`ls <空目录>` 会显示目录自身一行 (叶子文档语义), 不要误读为有内容。
+
+### 14.2 ⚠ 标题引用有歧义时整批操作中断
+
+同名文档跨笔记本/目录普遍存在 (如「架构设计」「调课」都有 2 个)。
+批量循环里用**标题**引用, 一个歧义就报错中断整批 (`while read` 循环里命令失败后变量仍推进, 造成"静默少处理几篇"的假象)。
+**规范**: 批量循环一律用 **id 循环**: `ls <目录> | while IFS=$'\t' read -r id name; do siyuan mv "$id" --parent <目标>; done`
+单条操作遇歧义, 改用完整路径: `siyuan mv /工作/日志/2026/AI伴学/架构设计 ...`
+
+### 14.3 ⚠ rename 前先查目标名是否已存在
+
+新建目录/重命名前, 先 `siyuan find <新名字>` 确认无重名 (含其他笔记本)。
+真实事故: 先 `touch 03-架构设计` 建目录, 又把「关键流程」`rename 架构设计` → 同目录下两个「架构设计」并存。
+**规范**: 建目录与 rename 二选一, 不要两个都做; 重命名用 `find` 预检。
+
+### 14.4 整理推荐顺序
+
+1. `ls <根>/**` 通配列出全部文档, 盘点数量与归属
+2. 先建目标目录 (`touch --parent`), **一次建好全部** (减少中间态)
+3. 批量移动用 id 循环 (见 14.2), 每批后 `ls` 核对数量
+4. rename 在移动前做 (rename 不改变父级, 移动后路径变化会引入歧义)
+5. 删空目录放最后 (见 14.1)
+6. 收尾: 通配 `ls` 总数 = 文档数 + 目录数, 与盘点对账; 抽查 2-3 篇 `cat` 确认内容无损
