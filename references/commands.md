@@ -1,246 +1,277 @@
-# SiYuan-Kernel 完整命令参考
+# siyuan 封装命令完整参考
 
-> 数据来源: 源码 `kernel/cli/cmd/*.go` (SiYuan-Kernel v3.8.0, 已用 `SiYuan-Kernel --help` 逐条核对)
-> 通过 `siyuan raw <cmd>` 调用, 建议加 `-f json` 拿结构化输出
-> 不确定参数时: `siyuan raw-help <cmd>`
+> 这是 skill 的**主学习材料**: 全部封装命令的用途、参数、输出、示例与组合用法。
+> 封装层满足不了时, 底层原始命令见 [raw.md](raw.md); 复杂功能 (数据库) 见 [database.md](database.md)。
 
-## 封装命令 vs 底层命令
+## 通用约定 (所有命令)
 
-封装层 (`siyuan <cmd>`) 覆盖高频操作 (文档读写、SQL、搜索、编辑、数据库), **引用协议统一** (id/路径/标题/通配, 见 SKILL.md)。底层命令 (`siyuan raw <cmd>`) 是 kernel 完整能力, 封装层未覆盖时走 raw。
+- **引用 `<doc>`**: id | 路径 (完整路径 `/工作/xx` 或 hpath `/xx`, 必须真实存在) | 通配 `/*/xx` | 标题。多匹配列候选报错, 详见 SKILL.md「引用协议」。
+- **输出模式** (三选一, `--json` 与 `--markdown` 互斥):
+  - 默认: 人类可读文本, 行式可管道组合
+  - `--json`: 稳定字段 JSON (agent 用)
+  - `--markdown`: 表格/列表/确认块, stdout 只含 markdown 可直接重定向到 .md 或粘贴进思源
+- **内容传入**: `--data <字符串>` / `--file <文件>` / 管道 stdin 三选一
+- **写操作返回目标 id** (可 `$(siyuan touch ...)` 直接取用)
+- **退出码**: 0=成功 1=业务错误 2=用法错误 3=配置错误 124=内核超时 (`diff` 例外: 0=同 1=异)
 
 ---
 
-## notebook — 笔记本
+## 一、读取 (查询类, shell 风格)
 
-| 命令 | 作用 |
-|------|------|
-| `raw notebook list` | 列出所有笔记本 |
-| `raw notebook create --name <name>` | 创建笔记本 |
-| `raw notebook remove --id <id>` | 删除笔记本 |
-| `raw notebook rename --id <id> --name <name>` | 重命名笔记本 |
-| `raw notebook open --id <id>` | 打开笔记本 |
-| `raw notebook close --id <id>` | 关闭笔记本 |
-| `raw notebook set-icon --id <id> --icon <icon>` | 设置笔记本图标 |
-| `raw notebook random-icon [--id <id>]` | 随机设置图标 |
+### ls — 列笔记本/文档
 
-封装: `siyuan ls` (列笔记本) / `siyuan ls <笔记本名>` (列库根文档)
+```
+siyuan ls [引用] [-l] [--json|--markdown]
+```
 
-## document — 文档
+- 无参: 列笔记本 (设 `SIYUAN_DEFAULT_NOTEBOOK` 后列该库根)
+- `ls 工作`: 列笔记本「工作」根目录文档 (支持中文名/笔记本 id)
+- `ls /工作/日志/2026/AI伴学`: 列目录下直接子文档 (路径必须真实)
+- `ls "/*/AI伴学"`: 通配, `*` 任意层级含零层, `?` 单字符; 多命中列出文档本身
+- `ls 调课`: 标题引用, 多匹配列候选报错
+- `ls <doc-id>`: 按 id 列其子文档
+- 叶子文档 (无子文档): 显示文档本身一行 (Linux `ls 文件` 语义)
+- `-l`: 详情 (子文档数/大小/修改时间)
 
-| 命令 | 作用 |
-|------|------|
-| `raw document list --notebook <id> [--path <p>] [--hpath <hp>]` | 列出笔记本下文档 |
-| `raw document create --notebook <id> --title <t> [--path <p>] [--markdown <md>]` | 创建文档 |
-| `raw document get --id <id>` | 取文档信息 |
-| `raw document info --id <id>` | 文档详情 |
-| `raw document rename --id <id> --title <t>` | 重命名 (只改 IAL title, 不改 H1) |
-| `raw document move --id <id> --notebook <id> [--path] [--hpath]` | 跨笔记本移动 |
-| `raw document duplicate --id <id>` | 复制文档 |
-| `raw document remove --id <id>` | 删除文档 |
-| `raw document search <keyword>` | 搜索文档 |
+```bash
+siyuan ls                        # 笔记本列表
+siyuan ls 工作 | siyuan grep 调课  # 管道过滤
+siyuan ls /AI伴学/待办实现 -l     # 详情模式
+```
 
-封装: `siyuan touch`/`write` (建) / `siyuan cat` (读) / `siyuan find` (搜) / `siyuan stat` (信息) / `siyuan mv`/`move` (移) / `siyuan cp` (复制) / `siyuan rm`/`remove` (删) / `siyuan rename` (改名) / `siyuan edit --replace` (整篇替换)
+### tree — 标题树/大纲
 
-⚠ `document move` 只能跨笔记本 (`--notebook` 必填)。封装 `siyuan mv <doc> --parent <父文档>` 自动取父文档所在笔记本, 同/跨笔记本都适用 (CLI 实现, 不依赖 HTTP)。
+```
+siyuan tree <doc> [-l] [--json|--markdown]
+```
 
-## block — 块操作
+- 标题块按层级缩进输出; `-l` 附块 id
+- 无标题文档 (目录文档/空文档) 输出空, 不报错
+- `--markdown`: 嵌套无序列表
 
-| 命令 | 作用 |
-|------|------|
-| `raw block get --id <id>` | 取块信息 |
-| `raw block children --id <id>` | 取子块 |
-| `raw block breadcrumb --id <id>` | 取块面包屑 |
-| `raw block dom --id <id>` | 取块 DOM |
-| `raw block kramdown --id <id>` | 取块 kramdown 源 (含块属性 {: id=...}) |
-| `raw block stat --id <id>` | 块内容统计 |
-| `raw block insert --parent <id> [--data <md>\|--file <f>] [--previous <id>]` | 插入块 |
-| `raw block append --parent <id> [--data <md>\|--file <f>]` | 追加块到末尾 |
-| `raw block prepend --parent <id> [--data <md>\|--file <f>]` | 插入块到开头 |
-| `raw block update --id <id> [--data <md>\|--file <f>]` | 更新块内容 |
-| `raw block delete --id <id>` | 删除块 |
-| `raw block move --id <id> --parent <pid>` | 移动块到另一父块 |
-| `raw block batch-get --ids id1,id2,...` | 批量取块信息 |
-| `raw block batch-kramdown --ids id1,id2,...` | 批量取 kramdown |
+### cat — 读文档 markdown 源
 
-封装: `siyuan children` (子块) / `siyuan edit --append|--prepend|--update` (追加/插入/改块) / `siyuan append` / `siyuan update-block` / `siyuan insert-block` / `siyuan delete-block`; 块引用接受 id 或文档引用
+```
+siyuan cat <doc> [--json|--markdown]
+```
 
-⚠ `block insert` 的 `--parent` 必填, `--previous` 只是兄弟锚点。封装 `insert-block --previous <id>` 会自动查其 parent。
+- 走 `export md` 直接读文件树, **最准** (不受索引滞后影响, 写入验证首选)
+- 文本模式 = 纯 markdown 原样, 可管道消费; `--json` 输出 `{id, hPath, box, markdown}`
 
-## outline / ref / sql — 大纲、反链、查询
+### head / tail — 读文档开头/末尾 N 行
 
-| 命令 | 作用 |
-|------|------|
-| `raw outline get --id <id>` | 取文档大纲 (标题树) |
-| `raw ref backlinks --id <id>` | 取块反链 |
-| `raw ref mentions --id <id>` | 取块提及 |
-| `raw ref refresh --id <id>` | 刷新块反链 |
-| `raw sql "<statement>"` | 执行 SQL (查 blocks/refs/spans 等) |
-| `raw search <query>` | 全文搜索 |
+```
+siyuan head|tail <doc> [-n N] [--json|--markdown]
+```
 
-封装: `siyuan tree` (大纲) / `siyuan backlinks` (反链) / `siyuan sql` (查询) / `siyuan find` (搜文档标题) / `siyuan grep` (搜内容)
+- 默认 10 行; 内部 cat 截断, 不新增内核调用
 
-## database — 数据库 (属性视图)
+### find — 跨库搜文档标题
 
-**封装命令组 `siyuan av ...`** (适配 3.8.0 B1/B2, 推荐; avID 支持按库名解析):
+```
+siyuan find <关键词> [--notebook <nb>] [-l N] [--json|--markdown]
+```
 
-| 命令 | 作用 |
-|------|------|
-| `av list [--json\|--markdown]` | 列出全部数据库 (avID+名称+路径) |
-| `av keys <avID> [--json\|--markdown]` | 列字段 (name/type/keyID; B1: 3.8 keys 为对象包装, 已适配) |
-| `av rows <avID> [--limit N] [-H] [--json\|--markdown]` | 列行数据 (B2: 走 render; TSV 可管道) |
-| `av get <avID> --row <rowID> [--json\|--markdown]` | 单行详情 |
-| `av add <avID> --values '<JSON>' [--content <标题>] [--block <doc>]` | 加行 (值自动嵌套, 自动反查 itemID, 写后验证; --block 引用支持 id/标题/路径) |
-| `av update <avID> --row <rowID> --values '<JSON>'` | 改行 (写后 render 验证) |
-| `av remove <avID> --row <rowID>` | 删行 (删后验证) |
-| `av verify <avID> [--json\|--markdown]` | 逐行打印实际值 (验证权威入口) |
-| `av export <avID>` | 导出全量 JSON (备份) |
+- 输出: `doc_id<TAB>完整路径<TAB>notebook_id` (路径可直接喂回 which/ls)
+- `--notebook`: 限定笔记本 (中文名/id)
 
-完整规范 (字段类型/值结构/录入流程/排查记录库设计): 见 [database.md](database.md)。
+### grep — 内容全文检索 / 行过滤器
 
-底层 `raw database ...` (透传, 高级用): search / get (3.8 起仅结构元数据) / keys / render (行数据唯一来源) / item add|update|remove / key add|remove / unused / clean。
+```
+siyuan grep <pattern> [-v] [-i] [-l] [-m 0-3] [--notebook <nb>] [-s N] [--json|--markdown]
+```
 
-## attr / bookmark / tag — 属性、书签、标签
+- **双模式**:
+  - 管道输入 (stdin 非终端): 真 grep 行过滤, 如 `siyuan ls 工作 | siyuan grep 调课`
+  - 终端输入: 内容全文检索 (kernel search), `-m` 选方法: 0=关键词 1=query-syntax 2=sql 3=regex
+- 内容模式输出: `doc_id<TAB>完整路径<TAB>匹配内容`; `-l` 只列 doc_id; 无匹配退出 1
+- 路径与 find 格式一致, 可直接喂回
 
-| 命令 | 作用 |
-|------|------|
-| `raw attr get --id <id>` | 取块属性 |
-| `raw attr set --id <id> --attr name=value` | 设块属性 |
-| `raw attr batch-get --ids id1,id2,...` | 批量取属性 |
-| `raw bookmark list` | 列书签 |
-| `raw bookmark labels` | 列书签标签 |
-| `raw bookmark remove --label <label>` | 删书签 |
-| `raw bookmark rename --old <old> --new <new>` | 重命名书签 |
-| `raw tag list` | 列标签 |
-| `raw tag remove --label <label>` | 删标签 |
-| `raw tag rename --old <old> --new <new>` | 重命名标签 |
+### which — 定位文档 → 唯一 doc id
 
-## dailynote — 闪卡/日记
+```
+siyuan which <引用> [-v] [--json|--markdown]
+```
 
-| 命令 | 作用 |
-|------|------|
-| `raw dailynote create --notebook <id>` | 创建今日日记 |
-| `raw dailynote append --notebook <id> [--data\|--file]` | 追加到今日日记 |
-| `raw dailynote prepend --notebook <id> [--data\|--file]` | 插入到今日日记开头 |
+- 输出唯一 doc id (可组合: `cat $(siyuan which 标题)`)
+- `-v`: 附完整路径/notebook; 多匹配列出候选并退出 1 (防误操作)
 
-## file — 工作区文件
+### stat — 文档元信息
 
-| 命令 | 作用 |
-|------|------|
-| `raw file list <path>` | 列目录 |
-| `raw file read <path>` | 读文件 |
-| `raw file write <path>` | 写文件 (stdin 或 --file) |
-| `raw file delete <path>` | 删文件/目录 |
-| `raw file rename <old> <new>` | 重命名/移动 |
-| `raw file copy <src> <dst>` | 复制 |
-| `raw file grep --pattern <regex> --path <path>` | 正则搜文件内容 |
-| `raw file find <path>` | 递归找文件 |
-| `raw file stat <path>` | 文件信息 |
+```
+siyuan stat <doc> [--json|--markdown]
+```
 
-## export / import — 导入导出
+- 文本: `key: value` (id/hPath/box/path/title/icon/updated...); `--json` 原始对象; `--markdown` 键值表
 
-| 命令 | 作用 |
-|------|------|
-| `raw export md --id <id> [--output <file>]` | 导出 Markdown (read 封装用的底层, 默认输出到 stdout) |
-| `raw export html --id <id>` | 导出 HTML |
-| `raw export preview --id <id>` | 导出预览 HTML |
-| `raw export docx --id <id> --output <file>` | 导出 Word |
-| `raw export sy --id <id> [--output <file>]` | 导出 .sy.zip |
-| `raw export md-zip --id <id> [--output <file>]` | 导出 Markdown zip |
-| `raw export data [--output <file>]` | 导出完整工作区备份 |
-| `raw import md --file <path> --notebook <id>` | 导入 Markdown 文件/目录 |
-| `raw import sy --file <path> --notebook <id>` | 导入 .sy.zip |
-| `raw import data --file <path>` | 导入数据备份 |
+### sql — 执行 SQL
 
-## asset — 资源文件
+```
+siyuan sql "<语句>" [-l N] [-H] [--json|--markdown]
+```
 
-| 命令 | 作用 |
-|------|------|
-| `raw asset upload --id <id> --file <path>` | 上传文件到资源 |
-| `raw asset unused` | 列未使用资源 |
-| `raw asset clean` | 清理未使用资源 |
-| `raw asset stat --path <path>` | 资源文件信息 |
+- 默认 limit 100; 文本 = TSV 行 (无表头可管道, `-H` 加表头); `--markdown` 表格
+- 查 blocks/refs/spans 等系统表
 
-## history — 历史记录
+```bash
+siyuan sql "SELECT id, content FROM blocks WHERE type='d' AND content LIKE '%调课%' LIMIT 5"
+```
 
-| 命令 | 作用 |
-|------|------|
-| `raw history list` | 列所有历史 |
-| `raw history search <query>` | 搜索历史 |
-| `raw history get --path <path>` | 取历史文件内容 |
-| `raw history rollback --path <path>` | 回滚文档到历史版本 |
-| `raw history clear` | 清所有历史 |
+### children — 子块列表 (编辑前定位)
 
-## inbox — 云端剪藏
+```
+siyuan children <block|doc> [--json|--markdown]
+```
 
-| 命令 | 作用 |
-|------|------|
-| `raw inbox list [-p <page>]` | 列云端剪藏 |
-| `raw inbox get --id <id>` | 取剪藏完整 markdown |
-| `raw inbox convert --ids id1,id2 --notebook <id> [--path </hp>] [--remove-after]` | 转为本地文档 |
+- 输出: `block_id<TAB>type<TAB>内容` (type: d=文档 h=标题 p=段落 l=列表 i=图片...)
+- 引用可为块 id 或文档引用 (文档自动定位到其根块)
 
-## template — 模板
+### backlinks — 反链
 
-| 命令 | 作用 |
-|------|------|
-| `raw template search [keyword]` | 搜索模板 (空关键词列全部) |
-| `raw template get --path <path>` | 读模板内容 |
-| `raw template create --name <name> [--data\|--file]` | 从 markdown 创建模板 |
-| `raw template remove --path <path>` | 删模板 |
-| `raw template render --path <path> --id <id>` | 对块渲染模板 (预览) |
-| `raw template save-as --id <id> --name <name>` | 把文档存为模板 |
+```
+siyuan backlinks <block|doc> [--keyword <kw>] [--json|--markdown]
+```
 
-## repo — 数据快照
+---
 
-| 命令 | 作用 |
-|------|------|
-| `raw repo list` | 列快照 |
-| `raw repo create` | 创建快照 |
-| `raw repo tag --id <id> --name <name>` | 给快照打标签 |
-| `raw repo untag --name <name>` | 移除标签 |
-| `raw repo checkout --id <id>` | 回滚到快照 |
-| `raw repo diff --left <id> --right <id>` | 对比两个快照 |
-| `raw repo search <keyword>` | 搜快照内文件 |
-| `raw repo purge` | 清理旧快照 |
-| `raw repo file get --id <fileID>` | 从快照取文件内容 |
-| `raw repo file rollback --id <fileID>` | 从快照回滚单个文件 |
-| `raw repo file open --id <fileID>` | 预览快照内文件 |
-| `raw repo file export --id <fileID>` | 导出快照内文件到临时目录 |
+## 二、写入/编辑 (shell 风格, 主推)
 
-## sync / system / workspace — 同步、系统、工作区
+### touch — 建文档
 
-| 命令 | 作用 |
-|------|------|
-| `raw sync push` | 上传到云端 |
-| `raw sync pull` | 从云端下载 |
-| `raw sync status` | 查看同步状态 |
-| `raw system current-time` | 服务器当前时间 |
-| `raw workspace list` | 列已注册工作区 |
-| `raw workspace info` | 当前工作区信息 |
-| `raw serve` | 启动内核 HTTP 服务 |
+```
+siyuan touch --notebook <nb> --title <t> [--parent <父文档> | --path <hpath>] [--data <md>|--file <f>|stdin]
+```
 
-## 全局参数
+- 默认建在笔记本根; `--parent` 引用支持 id/标题/路径 (推荐, 避免中间块)
+- 内容可选 (空文档 = 空文件语义)
+- 内部: createDocWithMd 三步语义 (建/移/删中间块), HTTP 不可用自动回退 CLI
+- 输出: 新文档 id
 
-| 参数 | 作用 |
-|------|------|
-| `-w <path>` | 工作区路径 (封装层已自动带) |
-| `-f json\|table` | 输出格式 (默认 table, 程序解析用 json) |
-| `--dry-run` | 只打印将要执行的操作, 不实际执行 |
+```bash
+cat <<'EOF' | siyuan touch --notebook 工作 --title "调课逻辑" --parent "$(siyuan which /调课)"
+# 调课逻辑
+## 入口
+...
+EOF
+```
 
-## 常见查询 SQL
+### edit — 统一编辑入口
 
-```sql
--- 按名称查文档 (type='d')
-SELECT id, content, hpath FROM blocks WHERE type='d' AND content LIKE '%关键词%' LIMIT 10;
+```
+siyuan edit <doc> (--append|--prepend|--update <块id>|--replace) <text> [--file|stdin]
+```
 
--- 查某文档下所有子块 (root_id 是文档块 id)
-SELECT id, type, content FROM blocks WHERE root_id='<doc-id>' AND type!='d';
+- `--append <text>`: 追加到文档末尾
+- `--prepend <text>`: 插入到文档开头
+- `--update <块id> <text>`: 改指定块 (校验块属于该文档, 防止改错块)
+- `--replace <text>`: 整篇替换 (删旧写新, 保留标题)
+- 文本可省略改从 `--file` / 管道 stdin (中文/引号内容推荐)
+- 输出: 目标 id (append/prepend/replace = 文档 id, update = 块 id)
 
--- 查数据库(AV)块
-SELECT id, content FROM blocks WHERE type='d' AND content LIKE '%库%';
+### mv — 移动文档
 
--- 查某文档的标题块 (用于改名时定位 H1)
-SELECT id FROM blocks WHERE root_id='<doc-id>' AND type='h' AND subtype='h1' LIMIT 1;
+```
+siyuan mv <doc> --parent <父文档> [--notebook <nb>]     (别名 --to)
+```
 
--- 查反链
-SELECT * FROM refs WHERE def_block_id='<block-id>';
+- `--parent`: 移到该文档下, 自动取父文档所在笔记本 (同/跨库都适用)
+- `--notebook`: 显式指定目标笔记本 (移到库根)
+- 输出: 被移动的文档 id
+
+### cp — 复制文档
+
+```
+siyuan cp <doc> [--parent <父文档>]     (别名 --to)
+```
+
+- duplicate, 同目录生成 "标题 (Duplicated ...)" 副本; `--parent` 复制后移到该文档下
+- 输出: 新副本的文档 id
+
+### rm — 删除文档
+
+```
+siyuan rm <doc>
+```
+
+- ⚠ 删除**目录文档会级联删除其下全部子文档** — 先移出子文档再删目录
+- 输出: 被删除的文档 id
+
+### diff — 对比两文档
+
+```
+siyuan diff <docA> <docB> [diff 参数...]
+```
+
+- 内部 export md + 系统 diff, 统一 `-u` 格式; 额外参数透传 (如 `-w` 忽略空白, `-U 5` 上下文行数)
+- 退出码同 diff: 0=相同 1=有差异 2=错误
+
+### rename — 重命名
+
+```
+siyuan rename <doc> <新标题>
+```
+
+- IAL title (文档名) + 第一个 H1 子块文本同步, 避免 title/H1 不一致
+- ⚠ 同目录重名预检: 新标题与同父级下已有文档重名 → 报错
+- 输出: 文档 id
+
+---
+
+## 三、底层写入 (id 级兼容命令, 与 shell 风格等价)
+
+| 命令 | 作用 | 等价 |
+| ------ | ------ | ------ |
+| `write --notebook <nb> --title <t> [--parent <父文档>\|--path <hpath>] [--data\|--file\|stdin]` | 建文档 | touch |
+| `append <doc> [--data\|--file\|stdin]` | 追加到文档末尾 | edit --append |
+| `insert-block [--previous <块>\|--parent <块\|doc>] [--data\|--file\|stdin]` | 插入块 | — |
+| `update-block <block-id> [--data\|--file]` | 替换块内容 | edit --update |
+| `replace-doc <doc> [--data\|--file\|stdin]` | 整篇替换 (删旧写新, 保留标题) | edit --replace |
+| `delete-block <block-id>` | 删除块 | — |
+| `move <doc> --parent <父文档>\|--notebook <nb>` | 移动文档 | mv |
+| `remove <doc>` | 删除文档 | rm |
+
+- 引用统一支持 id/标题/路径; 每次写操作返回目标 id
+- `insert-block`: `--previous` 为兄弟锚点 (自动查其父), `--parent` 为父块/文档引用
+
+---
+
+## 四、数据库 (AV) — `av` 命令组
+
+见 [database.md](database.md) 完整规范。速查:
+
+```
+siyuan av list                          # 列出全部数据库 (名称+avID)
+siyuan av keys <avID|库名>              # 列字段 (name/type/keyID)
+siyuan av rows <avID> [--limit N] [-H]  # 列行数据 (TSV 可管道)
+siyuan av get <avID> --row <行ID>       # 单行详情
+siyuan av add <avID> --values '<JSON>' [--content 标题] [--block <doc>]   # 加行
+siyuan av update <avID> --row <行ID> --values '<JSON>'                    # 改行
+siyuan av remove <avID> --row <行ID>    # 删行
+siyuan av verify <avID>                 # 逐行打印实际值 (验证权威入口)
+siyuan av export <avID>                 # 导出全量 JSON (备份)
+```
+
+- `--values` 传 `{字段名: 值}` 自动按类型嵌套; 写后自动验证 (底层 item update 的 ok 不可信)
+- avID 支持按库名解析; `--block` 引用支持 id/标题/路径
+
+---
+
+## 五、底层透传与帮助
+
+```
+siyuan raw <args...>           # 透传 SiYuan-Kernel (自带 -w; 完整 24 类命令见 raw.md)
+siyuan raw-help <sub...>       # 查底层命令帮助, 例: raw-help block insert
+siyuan help [命令]             # 帮助; 旧名别名: list/read/get/outline/search/notebooks 仍可用
+```
+
+---
+
+## 六、组合用法 (管道)
+
+```bash
+siyuan ls 工作 | siyuan grep 调课                # 过滤文档列表
+siyuan cat $(siyuan which /工作/调课)            # 定位并读
+siyuan find 调课 | cut -f1 | head -3             # 取前 3 篇文档 id
+siyuan grep 调课 -l | head -5                    # 内容命中前 5 篇
+siyuan ls /AI伴学/待办实现 | while read -r id name; do ...; done   # 批量 (用 id!)
 ```

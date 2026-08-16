@@ -10,24 +10,33 @@ skill 已放在 `~/.pi/skills/siyuan/`, pi 会自动发现。终端直接用可�
 echo 'alias siyuan=~/.pi/skills/siyuan/bin/siyuan' >> ~/.zshrc
 ```
 
-## 结构
+## 结构 (渐进式)
 
 遵循 [Agent Skills 标准](https://agentskills.io/specification) 的 progressive disclosure:
 
-- **SKILL.md** (入口): 引用协议 + 命令速查 + 核心约定 + 典型用法。pi 启动时只加载 frontmatter 的 description, 匹配任务时才 read 全文。
-- **references/** (按需加载):
-  - `commands.md` — 完整底层命令参考 (24 类命令)
-  - `database.md` — 数据库 (AV) 完整规范
-  - `conventions.md` — 详细约定、源码依据与踩坑规范
-- **bin/siyuan** — CLI 封装层 (bash 框架 + node 数据层):
-  - `bin/lib/framework.sh` — 引用解析器 / 内核调用 (超时) / 统一错误与退出码 / JSON 助手
+```
+SKILL.md (入口)                 引用协议 + 命令速查 + 高频坑 → 立刻能干活
+  ↓ 需要命令细节
+references/commands.md          ★ 封装命令完整参考 (参数/输出/示例/组合)
+  ↓ 封装不满足
+references/raw.md               底层原始命令 (24 类, 或 raw-help 实时查)
+  ↓ 复杂功能
+references/database.md          数据库 (AV) 深度规范
+  ↓ 踩坑沉淀
+references/conventions.md       批量整理等事故规范
+```
+
+**实现** (使用者无需关心):
+
+- `bin/siyuan` — CLI 主入口 (bash 框架 + node 数据层):
+  - `bin/lib/framework.sh` — 引用解析器 / 内核调用 (超时) / 统一错误与退出码
   - `bin/lib/cmd-query.sh` — 查询命令组 (ls/tree/cat/head/tail/find/grep/which/stat)
   - `bin/lib/cmd-misc.sh` — sql/raw/raw-help/children/backlinks
-  - `bin/lib/cmd-write.sh` — 底层写入 (write/append/insert-block/update-block/delete-block/replace-doc/move/remove)
-  - `bin/lib/cmd-edit.sh` — shell 风格编辑命令组 (touch/edit/mv/cp/rm/diff/rename)
-  - `bin/lib/cmd-av.sh` — av 命令组 (list/keys/rows/get/add/update/remove/verify/export, 适配 3.8.0 B1/B2)
-  - `bin/lib/fmt.js` — node 数据格式化助手 (JSON→TSV/文本/稳定字段/完整路径)
-- **scripts/smoke-markdown.sh** — 冒烟测试 (全命令 --markdown 输出验证)
+  - `bin/lib/cmd-write.sh` — 底层写入组 (write/append/insert-block/update-block/delete-block/replace-doc/move/remove)
+  - `bin/lib/cmd-edit.sh` — shell 风格编辑组 (touch/edit/mv/cp/rm/diff/rename)
+  - `bin/lib/cmd-av.sh` — av 命令组 (适配 3.8.0 B1/B2)
+  - `bin/lib/fmt.js` — node 数据格式化助手
+- `scripts/smoke-markdown.sh` — 开发自测冒烟脚本
 
 ## 配置
 
